@@ -5,20 +5,16 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import org.json.JSONObject
 
-/**
- * Utility for showing earphone battery info via HyperOS Focus Island (Super Island).
- *
- * Uses standard Notification API with `miui.focus.param` extras (protocol 3).
- * Replaces the deprecated MiuiStrongToast approach.
- */
 @SuppressLint("WrongConstant")
 object FocusIslandUtil {
     private const val TAG = "OppoPods-FocusIsland"
@@ -29,51 +25,36 @@ object FocusIslandUtil {
     private const val ISLAND_TIMEOUT_SECONDS = 3
     private const val DISMISS_DELAY_MS = 4000L
 
-    /**
-     * Show earphone battery as a Focus Island notification.
-     *
-     * @param context Context from the hooked process (com.xiaomi.bluetooth)
-     * @param batteryParams Battery data for left/right/case
-     * @return true if successfully shown, false if failed (caller should fallback)
-     */
     fun showBatteryIsland(context: Context, batteryParams: BatteryParams): Boolean {
         try {
             val leftBatt = batteryParams.left?.battery ?: 0
             val rightBatt = batteryParams.right?.battery ?: 0
 
-            // Load earphone icons from module APK resources
+            // 从模块 APK 加载耳机图片为 Bitmap，避免跨包资源引用问题
             val moduleContext = context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            val leftResId = moduleContext.resources.getIdentifier(
-                "img_left", "drawable", MODULE_PACKAGE
-            )
-            val rightResId = moduleContext.resources.getIdentifier(
-                "img_right", "drawable", MODULE_PACKAGE
-            )
+            val leftBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_left)
+            val rightBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_right)
 
-            if (leftResId == 0 || rightResId == 0) {
-                Log.e(TAG, "Failed to find earphone icon resources")
+            if (leftBitmap == null || rightBitmap == null) {
+                Log.e(TAG, "Failed to decode earphone icon bitmaps")
                 return false
             }
 
-            val leftIcon = Icon.createWithResource(MODULE_PACKAGE, leftResId)
-            val rightIcon = Icon.createWithResource(MODULE_PACKAGE, rightResId)
+            // 使用 createWithBitmap 直接嵌入图片数据，SystemUI 无需再访问模块资源
+            val leftIcon = Icon.createWithBitmap(leftBitmap)
+            val rightIcon = Icon.createWithBitmap(rightBitmap)
 
-            // Build Focus Island JSON
             val json = buildIslandJson(leftBatt, rightBatt)
 
-            // Build pics bundle
             val picsBundle = Bundle().apply {
                 putParcelable("miui.focus.pic_left", leftIcon)
                 putParcelable("miui.focus.pic_right", rightIcon)
             }
 
-            // Create notification channel
-            val notificationManager = context.getSystemService(
-                Context.NOTIFICATION_SERVICE
-            ) as NotificationManager
-            notificationManager.createNotificationChannel(
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
@@ -82,7 +63,6 @@ object FocusIslandUtil {
                 }
             )
 
-            // Build and send notification
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .setContentTitle("OppoPods")
@@ -93,13 +73,10 @@ object FocusIslandUtil {
                 })
                 .build()
 
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            nm.notify(NOTIFICATION_ID, notification)
 
-            // Auto-cancel after island dismisses
             Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    notificationManager.cancel(NOTIFICATION_ID)
-                } catch (_: Exception) {}
+                try { nm.cancel(NOTIFICATION_ID) } catch (_: Exception) {}
             }, DISMISS_DELAY_MS)
 
             Log.d(TAG, "Focus Island shown: L=$leftBatt% R=$rightBatt%")
