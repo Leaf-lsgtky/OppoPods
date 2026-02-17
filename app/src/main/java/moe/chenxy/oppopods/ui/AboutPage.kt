@@ -27,10 +27,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun AboutPage() {
+fun AboutPage(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(12.dp),
+        modifier = modifier.fillMaxSize().padding(12.dp),
     ) {
         item {
             Row(

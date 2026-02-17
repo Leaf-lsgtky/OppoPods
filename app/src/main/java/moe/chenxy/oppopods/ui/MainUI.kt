@@ -1,23 +1,15 @@
 package moe.chenxy.oppopods.ui
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,34 +17,32 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
@@ -60,54 +50,35 @@ import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationItem
-import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.icons.Back
+import top.yukonga.miuix.kmp.icon.icons.Info
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Volatile
 var restoreAncJob: Job? = null
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-@OptIn(FlowPreview::class)
 @Composable
 fun MainUI() {
-    val topAppBarScrollBehavior0 = MiuixScrollBehavior(rememberTopAppBarState())
-    val topAppBarScrollBehavior1 = MiuixScrollBehavior(rememberTopAppBarState())
+    val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
 
-    val topAppBarScrollBehaviorList = listOf(
-        topAppBarScrollBehavior0, topAppBarScrollBehavior1
-    )
-
-    val pagerState = rememberPagerState(pageCount = { 2 })
-    var targetPage by remember { mutableIntStateOf(pagerState.currentPage) }
-    val coroutineScope = rememberCoroutineScope()
-
-    val currentScrollBehavior = when (pagerState.currentPage) {
-        0 -> topAppBarScrollBehaviorList[0]
-        else -> topAppBarScrollBehaviorList[1]
-    }
+    var currentPage by remember { mutableStateOf("main") }
+    val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
-    val aboutTitle = stringResource(R.string.about)
-    val currentTitle = when (pagerState.currentPage) {
-        0 -> mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
-        else -> aboutTitle
+    val currentTitle = when (currentPage) {
+        "about" -> stringResource(R.string.about)
+        else -> mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
     }
-
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.debounce(150).collectLatest {
-            targetPage = pagerState.currentPage
-        }
-    }
-    val context = LocalContext.current
 
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
@@ -224,104 +195,72 @@ fun MainUI() {
         appController.connect(device)
     }
 
-    val settingsIcon = ImageVector.vectorResource(R.drawable.ic_nav_settings)
-    val infoIcon = ImageVector.vectorResource(R.drawable.ic_nav_info)
-
-    val navigationItems = listOf(
-        NavigationItem(
-            label = stringResource(R.string.pod_info),
-            icon = settingsIcon
-        ),
-        NavigationItem(
-            label = stringResource(R.string.about),
-            icon = infoIcon
-        )
-    )
+    BackHandler(enabled = currentPage == "about") {
+        currentPage = "main"
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = currentTitle,
-                largeTitle = currentTitle,
-                scrollBehavior = currentScrollBehavior
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                navigationItems.forEachIndexed { index, item ->
-                    NavigationBarItem(
-                        selected = targetPage == index,
-                        onClick = {
-                            targetPage = index
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(index)
-                            }
-                        },
-                        icon = item.icon,
-                        label = item.label
-                    )
-                }
-            }
-        },
-    ) { padding ->
-        AppHorizontalPager(
-            pagerState = pagerState,
-            topAppBarScrollBehaviorList = topAppBarScrollBehaviorList,
-            padding = padding,
-            canShowDetailPage = canShowDetailPage,
-            isConnecting = isConnecting,
-            isError = isError,
-            batteryParams = displayBattery,
-            ancMode = displayAnc,
-            onAncModeChange = { setAncMode(it) },
-            onDeviceSelected = { onDeviceSelected(it) },
-            onRetry = { appController.disconnect() }
-        )
-    }
-}
-
-@Composable
-fun AppHorizontalPager(
-    modifier: Modifier = Modifier,
-    pagerState: PagerState,
-    topAppBarScrollBehaviorList: List<ScrollBehavior>,
-    padding: PaddingValues,
-    canShowDetailPage: Boolean,
-    isConnecting: Boolean,
-    isError: Boolean,
-    batteryParams: BatteryParams,
-    ancMode: NoiseControlMode,
-    onAncModeChange: (NoiseControlMode) -> Unit,
-    onDeviceSelected: (BluetoothDevice) -> Unit,
-    onRetry: () -> Unit
-) {
-    HorizontalPager(
-        modifier = modifier.padding(padding),
-        state = pagerState,
-    ) { page ->
-        when (page) {
-            0 -> Crossfade(
-                targetState = when {
-                    canShowDetailPage -> "detail"
-                    isConnecting -> "connecting"
-                    isError -> "error"
-                    else -> "picker"
+                largeTitle = if (currentPage == "main") currentTitle else null,
+                scrollBehavior = topAppBarScrollBehavior,
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (currentPage == "about") {
+                            currentPage = "main"
+                        } else {
+                            (context as? Activity)?.finish()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = "Back"
+                        )
+                    }
                 },
-                label = "MainPageAnim"
-            ) { state ->
-                when (state) {
-                    "detail" -> PodDetailPage(
-                        batteryParams = batteryParams,
-                        ancMode = ancMode,
-                        onAncModeChange = onAncModeChange
-                    )
-                    "connecting" -> ConnectingPage()
-                    "error" -> ErrorPage(onRetry = onRetry)
-                    else -> DevicePickerPage(onDeviceSelected = onDeviceSelected)
+                actions = {
+                    if (currentPage == "main") {
+                        IconButton(onClick = { currentPage = "about" }) {
+                            Icon(
+                                imageVector = MiuixIcons.Info,
+                                contentDescription = "About"
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Crossfade(
+            targetState = currentPage,
+            label = "PageTransition"
+        ) { page ->
+            when (page) {
+                "about" -> AboutPage(modifier = Modifier.padding(padding))
+                else -> Crossfade(
+                    targetState = when {
+                        canShowDetailPage -> "detail"
+                        isConnecting -> "connecting"
+                        isError -> "error"
+                        else -> "picker"
+                    },
+                    label = "MainPageAnim"
+                ) { state ->
+                    Box(modifier = Modifier.padding(padding)) {
+                        when (state) {
+                            "detail" -> PodDetailPage(
+                                batteryParams = displayBattery,
+                                ancMode = displayAnc,
+                                onAncModeChange = { setAncMode(it) }
+                            )
+                            "connecting" -> ConnectingPage()
+                            "error" -> ErrorPage(onRetry = { appController.disconnect() })
+                            else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
+                        }
+                    }
                 }
             }
-
-            1 -> AboutPage()
         }
     }
 }

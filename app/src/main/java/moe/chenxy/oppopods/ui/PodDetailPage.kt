@@ -1,11 +1,17 @@
 package moe.chenxy.oppopods.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
@@ -19,16 +25,34 @@ fun PodDetailPage(
     onAncModeChange: (NoiseControlMode) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
-            Card(
-                modifier = Modifier.padding(12.dp)
-            ) {
-                PodStatus(batteryParams, modifier = Modifier.padding(12.dp))
-            }
+            Image(
+                painter = painterResource(R.drawable.img_box),
+                contentDescription = "Earphones",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 48.dp, vertical = 16.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
 
-            AncSwitch(ancMode, onAncModeChange)
+        item {
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp)
+            ) {
+                PodStatus(batteryParams, modifier = Modifier.padding(16.dp))
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                AncSwitch(ancMode, onAncModeChange)
+            }
         }
     }
 }

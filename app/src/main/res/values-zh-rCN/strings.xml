@@ -7,10 +7,10 @@
     <string name="based_on">基于</string>
     <string name="off">关闭</string>
     <string name="noise_cancellation_title">降噪</string>
-    <string name="transparency_title">通透模式</string>
-    <string name="pod_case">"充电盒: "</string>
-    <string name="batt_left_pod">"左: "</string>
-    <string name="batt_right_pod">"右: "</string>
+    <string name="transparency_title">通透</string>
+    <string name="pod_case">充电盒</string>
+    <string name="batt_left_pod">左</string>
+    <string name="batt_right_pod">右</string>
     <string name="waiting_for_pod">等待 OPPO 耳机连接...</string>
     <string name="select_device">选择蓝牙设备</string>
     <string name="no_paired_devices">未找到已配对设备，请先在系统蓝牙设置中配对耳机。</string>

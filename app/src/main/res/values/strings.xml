@@ -7,9 +7,9 @@
     <string name="off">Off</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
-    <string name="pod_case">"Case: "</string>
-    <string name="batt_left_pod">"Left: "</string>
-    <string name="batt_right_pod">"Right: "</string>
+    <string name="pod_case">Case</string>
+    <string name="batt_left_pod">Left</string>
+    <string name="batt_right_pod">Right</string>
     <string name="waiting_for_pod">Waiting for OPPO Earphones Connection...</string>
     <string name="select_device">Select Bluetooth Device</string>
     <string name="no_paired_devices">No paired devices found. Please pair your earphones in system Bluetooth settings first.</string>
