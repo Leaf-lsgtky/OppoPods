@@ -55,15 +55,34 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         if: ${{ env.SIGNING_KEY != '' }}
-        uses: kevin-david/zipalign-sign-android-release@v2
-        id: sign_app
-        continue-on-error: true
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Decode keystore from base64
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > /tmp/keystore.jks
+
+          # Find latest build-tools
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)
+          echo "Using build-tools: $BUILD_TOOLS"
+
+          # Find the unsigned APK
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "Unsigned APK: $UNSIGNED_APK"
+
+          # Zipalign
+          ${BUILD_TOOLS}zipalign -f 4 "$UNSIGNED_APK" app/build/outputs/apk/release/OppoPods-release-signed.apk
+
+          # Sign with apksigner
+          ${BUILD_TOOLS}apksigner sign \
+            --ks /tmp/keystore.jks \
+            --ks-key-alias "${{ secrets.ALIAS }}" \
+            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            app/build/outputs/apk/release/OppoPods-release-signed.apk
+
+          # Verify
+          ${BUILD_TOOLS}apksigner verify --print-certs app/build/outputs/apk/release/OppoPods-release-signed.apk
+
+          # Cleanup
+          rm /tmp/keystore.jks
 
       - name: Upload signed release APK
         env:
@@ -72,16 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OppoPods-release
-          path: app/build/outputs/apk/release/*-signed.apk
-
-      - name: Upload unsigned release APK (if signing failed)
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' && steps.sign_app.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: OppoPods-release-unsigned
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/OppoPods-release-signed.apk
 
       - name: Upload debug APK
         env:
@@ -100,7 +110,7 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ github.token }}
-          artifacts: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          artifacts: app/build/outputs/apk/release/OppoPods-release-signed.apk
           generateReleaseNotes: true
           makeLatest: true
           replacesArtifacts: true
