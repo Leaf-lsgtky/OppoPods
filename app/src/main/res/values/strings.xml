@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">OppoPods</string>
+    <string name="app_subtitle">OPPO Earphones for HyperOS</string>
+    <string name="pod_info">Pod Info</string>
+    <string name="about">About OppoPods</string>
+    <string name="based_on">Based on</string>
+    <string name="off">Off</string>
+    <string name="noise_cancellation_title">NC</string>
+    <string name="transparency_title">Transparency</string>
+    <string name="pod_case">"Case: "</string>
+    <string name="batt_left_pod">"Left: "</string>
+    <string name="batt_right_pod">"Right: "</string>
+    <string name="waiting_for_pod">Waiting for OPPO Earphones Connection...</string>
+</resources>

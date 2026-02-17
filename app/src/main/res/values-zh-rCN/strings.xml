@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OppoPods</string>
+    <string name="app_subtitle">OPPO 耳机适配 HyperOS</string>
+    <string name="pod_info">耳机信息</string>
+    <string name="about">关于 OppoPods</string>
+    <string name="based_on">基于</string>
+    <string name="off">关闭</string>
+    <string name="noise_cancellation_title">降噪</string>
+    <string name="transparency_title">通透模式</string>
+    <string name="pod_case">"充电盒: "</string>
+    <string name="batt_left_pod">"左: "</string>
+    <string name="batt_right_pod">"右: "</string>
+    <string name="waiting_for_pod">等待 OPPO 耳机连接...</string>
+</resources>
