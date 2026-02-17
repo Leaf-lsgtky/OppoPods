@@ -7,12 +7,24 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,18 +35,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.lerp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -48,29 +51,16 @@ import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
-import top.yukonga.miuix.kmp.basic.HorizontalPager
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationItem
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.ScrollBehavior
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.icons.Info
-import top.yukonga.miuix.kmp.icon.icons.Settings
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Volatile
 var restoreAncJob: Job? = null
 
-@SuppressLint("UnusedBoxWithConstraintsScope")
-@OptIn(FlowPreview::class)
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
+@OptIn(FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainUI() {
-    val topAppBarScrollBehavior0 = MiuixScrollBehavior(rememberTopAppBarState())
-    val topAppBarScrollBehavior1 = MiuixScrollBehavior(rememberTopAppBarState())
+    val topAppBarScrollBehavior0 = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val topAppBarScrollBehavior1 = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     val topAppBarScrollBehaviorList = listOf(
         topAppBarScrollBehavior0, topAppBarScrollBehavior1
@@ -91,11 +81,6 @@ fun MainUI() {
         0 -> mainTitle.value
         else -> aboutTitle
     }
-
-    val items = listOf(
-        NavigationItem(stringResource(R.string.pod_info), MiuixIcons.Settings),
-        NavigationItem(stringResource(R.string.about), MiuixIcons.Info),
-    )
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.debounce(150).collectLatest {
@@ -176,72 +161,44 @@ fun MainUI() {
         }
     }
 
-    val hazeState = remember { HazeState() }
-    val hazeStyle = HazeStyle(
-        backgroundColor = if (currentScrollBehavior.state.heightOffset > -1) Color.Transparent else MiuixTheme.colorScheme.background,
-        tint = HazeTint(
-            MiuixTheme.colorScheme.background.copy(
-                if (currentScrollBehavior.state.heightOffset > -1) 1f
-                else lerp(1f, 0.67f, (currentScrollBehavior.state.heightOffset + 1) / -143f)
-            )
-        )
-    )
-
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(currentScrollBehavior.nestedScrollConnection),
         topBar = {
-            BoxWithConstraints {
-                if (maxWidth > 840.dp) {
-                    SmallTopAppBar(
-                        color = Color.Transparent,
-                        title = currentTitle,
-                        modifier = Modifier
-                            .hazeChild(hazeState) {
-                                style = hazeStyle
-                                blurRadius = 25.dp
-                                noiseFactor = 0f
-                            },
-                        scrollBehavior = currentScrollBehavior
-                    )
-                } else {
-                    TopAppBar(
-                        color = Color.Transparent,
-                        title = currentTitle,
-                        scrollBehavior = currentScrollBehavior,
-                        modifier = Modifier
-                            .hazeChild(hazeState) {
-                                style = hazeStyle
-                                blurRadius = 25.dp
-                                noiseFactor = 0f
-                            }
-                    )
-                }
-            }
+            LargeTopAppBar(
+                title = { Text(currentTitle) },
+                scrollBehavior = currentScrollBehavior
+            )
         },
         bottomBar = {
-            NavigationBar(
-                color = Color.Transparent,
-                modifier = Modifier
-                    .hazeChild(hazeState) {
-                        style = hazeStyle
-                        blurRadius = 25.dp
-                        noiseFactor = 0f
-                    },
-                items = items,
-                selected = targetPage,
-                onClick = { index ->
-                    if (index in 0..1) {
-                        targetPage = index
+            NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    label = { Text(stringResource(R.string.pod_info)) },
+                    selected = targetPage == 0,
+                    onClick = {
+                        targetPage = 0
                         coroutineScope.launch {
-                            pagerState.animateScrollToPage(index)
+                            pagerState.animateScrollToPage(0)
                         }
                     }
-                }
-            )
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    label = { Text(stringResource(R.string.about)) },
+                    selected = targetPage == 1,
+                    onClick = {
+                        targetPage = 1
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(1)
+                        }
+                    }
+                )
+            }
         },
     ) { padding ->
         AppHorizontalPager(
-            modifier = Modifier.imePadding().haze(state = hazeState),
             pagerState = pagerState,
             topAppBarScrollBehaviorList = topAppBarScrollBehaviorList,
             padding = padding,
@@ -253,11 +210,12 @@ fun MainUI() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppHorizontalPager(
     modifier: Modifier = Modifier,
     pagerState: PagerState,
-    topAppBarScrollBehaviorList: List<ScrollBehavior>,
+    topAppBarScrollBehaviorList: List<TopAppBarScrollBehavior>,
     padding: PaddingValues,
     canShowDetailPage: Boolean,
     batteryParams: BatteryParams,
@@ -265,38 +223,23 @@ fun AppHorizontalPager(
     onAncModeChange: (NoiseControlMode) -> Unit
 ) {
     HorizontalPager(
-        modifier = modifier,
-        pagerState = pagerState,
-        pageContent = { page ->
-            when (page) {
-                0 -> Crossfade(canShowDetailPage, label = "MainUIShowDetailAnim") { value ->
-                    if (value) {
-                        PodDetailPage(
-                            topAppBarScrollBehavior = topAppBarScrollBehaviorList[0],
-                            padding = padding,
-                            batteryParams = batteryParams,
-                            ancMode = ancMode,
-                            onAncModeChange = onAncModeChange
-                        )
-                    } else {
-                        WaitingPodsPage()
-                    }
+        modifier = modifier.padding(padding),
+        state = pagerState,
+    ) { page ->
+        when (page) {
+            0 -> Crossfade(canShowDetailPage, label = "MainUIShowDetailAnim") { value ->
+                if (value) {
+                    PodDetailPage(
+                        batteryParams = batteryParams,
+                        ancMode = ancMode,
+                        onAncModeChange = onAncModeChange
+                    )
+                } else {
+                    WaitingPodsPage()
                 }
-
-                1 -> AboutPage(
-                    topAppBarScrollBehavior = topAppBarScrollBehaviorList[1],
-                    padding = padding
-                )
             }
+
+            1 -> AboutPage()
         }
-    )
+    }
 }
-
-@Composable
-fun Dp.dpToPx() = with(LocalDensity.current) { this@dpToPx.toPx() }
-
-@Composable
-fun Int.pxToDp() = with(LocalDensity.current) { this@pxToDp.toDp() }
-
-@Composable
-fun Float.pxToDp() = with(LocalDensity.current) { this@pxToDp.toDp() }

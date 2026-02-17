@@ -7,7 +7,6 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.parcelize)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.jetbrains.compose)
 }
 
 apksign {
@@ -65,6 +64,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
     }
 
     packaging {
@@ -92,14 +92,14 @@ dependencies {
     implementation(libs.yukihookApi)
     ksp(libs.yukihookKsp)
     implementation(libs.kotlinx.serialization.json)
-    // UI Kits
-    implementation(libs.yukonga.miuix)
+
+    // Compose
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
     implementation(libs.androidx.activity.compose)
-    implementation(compose.runtime)
-    implementation(compose.foundation)
-    implementation(compose.ui)
-    implementation(compose.components.resources)
-    implementation(compose.preview)
-    debugImplementation(compose.uiTooling)
-    implementation(libs.haze)
 }
