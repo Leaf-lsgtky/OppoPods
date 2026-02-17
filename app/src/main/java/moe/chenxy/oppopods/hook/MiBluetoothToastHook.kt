@@ -158,7 +158,7 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                     intentFilter.addAction("chen.action.oppopods.updatepodsnotification")
                     intentFilter.addAction("chen.action.oppopods.cancelpodsnotification")
                     context.registerReceiver(broadcastReceiver, intentFilter,
-                        Context.RECEIVER_NOT_EXPORTED)
+                        Context.RECEIVER_EXPORTED)
                 }
             }
         }
