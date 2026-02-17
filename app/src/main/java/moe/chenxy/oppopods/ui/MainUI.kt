@@ -28,6 +28,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +62,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationItem
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
@@ -67,9 +70,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.icons.Info
-import top.yukonga.miuix.kmp.icon.icons.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Volatile
@@ -224,14 +224,17 @@ fun MainUI() {
         appController.connect(device)
     }
 
+    val settingsIcon = ImageVector.vectorResource(R.drawable.ic_nav_settings)
+    val infoIcon = ImageVector.vectorResource(R.drawable.ic_nav_info)
+
     val navigationItems = listOf(
-        top.yukonga.miuix.kmp.basic.NavigationItem(
+        NavigationItem(
             label = stringResource(R.string.pod_info),
-            icon = MiuixIcons.Settings
+            icon = settingsIcon
         ),
-        top.yukonga.miuix.kmp.basic.NavigationItem(
+        NavigationItem(
             label = stringResource(R.string.about),
-            icon = MiuixIcons.Info
+            icon = infoIcon
         )
     )
 
@@ -244,16 +247,21 @@ fun MainUI() {
             )
         },
         bottomBar = {
-            NavigationBar(
-                items = navigationItems,
-                selected = targetPage,
-                onClick = { index ->
-                    targetPage = index
-                    coroutineScope.launch {
-                        pagerState.animateScrollToPage(index)
-                    }
+            NavigationBar {
+                navigationItems.forEachIndexed { index, item ->
+                    NavigationBarItem(
+                        selected = targetPage == index,
+                        onClick = {
+                            targetPage = index
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        icon = item.icon,
+                        label = item.label
+                    )
                 }
-            )
+            }
         },
     ) { padding ->
         AppHorizontalPager(
