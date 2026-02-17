@@ -30,6 +30,9 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Build debug APK
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
