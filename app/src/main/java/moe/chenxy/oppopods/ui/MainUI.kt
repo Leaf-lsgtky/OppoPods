@@ -18,21 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeTopAppBar
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -64,16 +58,29 @@ import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.icons.Info
+import top.yukonga.miuix.kmp.icon.icons.Settings
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Volatile
 var restoreAncJob: Job? = null
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-@OptIn(FlowPreview::class, ExperimentalMaterial3Api::class)
+@OptIn(FlowPreview::class)
 @Composable
 fun MainUI() {
-    val topAppBarScrollBehavior0 = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val topAppBarScrollBehavior1 = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val topAppBarScrollBehavior0 = MiuixScrollBehavior(rememberTopAppBarState())
+    val topAppBarScrollBehavior1 = MiuixScrollBehavior(rememberTopAppBarState())
 
     val topAppBarScrollBehaviorList = listOf(
         topAppBarScrollBehavior0, topAppBarScrollBehavior1
@@ -102,28 +109,22 @@ fun MainUI() {
     }
     val context = LocalContext.current
 
-    // State shared by both hook mode and standalone mode
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
 
-    // Hook mode state (connected via Xposed hook in com.android.bluetooth)
     val hookConnected = remember { mutableStateOf(false) }
-    val hookInit = remember { mutableStateOf(false) }
 
-    // Standalone mode controller
     val appController = remember { AppRfcommController() }
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
     val appAnc by appController.ancMode.collectAsState()
     val appDeviceName by appController.deviceName.collectAsState()
 
-    // Determine which mode is active
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
     val isError = appConnState == AppRfcommController.ConnectionState.ERROR
     val canShowDetailPage = hookConnected.value || isStandaloneConnected
 
-    // Merge state from active source
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
     val displayTitle = when {
@@ -133,14 +134,12 @@ fun MainUI() {
         else -> ""
     }
 
-    // Update title
     LaunchedEffect(displayTitle) {
         if (displayTitle.isNotEmpty()) {
             mainTitle.value = displayTitle
         }
     }
 
-    // Broadcast receiver for hook mode
     val broadcastReceiver = remember {
         object : BroadcastReceiver() {
             override fun onReceive(p0: Context?, p1: Intent?) {
@@ -203,7 +202,6 @@ fun MainUI() {
             appController.setANCMode(mode)
             return
         }
-        // Hook mode
         if (restoreAncJob?.isActive == true) return
         val status = when (mode) {
             NoiseControlMode.OFF -> 1
@@ -226,41 +224,36 @@ fun MainUI() {
         appController.connect(device)
     }
 
+    val navigationItems = listOf(
+        top.yukonga.miuix.kmp.basic.NavigationItem(
+            label = stringResource(R.string.pod_info),
+            icon = MiuixIcons.Settings
+        ),
+        top.yukonga.miuix.kmp.basic.NavigationItem(
+            label = stringResource(R.string.about),
+            icon = MiuixIcons.Info
+        )
+    )
+
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(currentScrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = { Text(currentTitle) },
+            TopAppBar(
+                title = currentTitle,
+                largeTitle = currentTitle,
                 scrollBehavior = currentScrollBehavior
             )
         },
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text(stringResource(R.string.pod_info)) },
-                    selected = targetPage == 0,
-                    onClick = {
-                        targetPage = 0
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(0)
-                        }
+            NavigationBar(
+                items = navigationItems,
+                selected = targetPage,
+                onClick = { index ->
+                    targetPage = index
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(index)
                     }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Info, contentDescription = null) },
-                    label = { Text(stringResource(R.string.about)) },
-                    selected = targetPage == 1,
-                    onClick = {
-                        targetPage = 1
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(1)
-                        }
-                    }
-                )
-            }
+                }
+            )
         },
     ) { padding ->
         AppHorizontalPager(
@@ -274,19 +267,16 @@ fun MainUI() {
             ancMode = displayAnc,
             onAncModeChange = { setAncMode(it) },
             onDeviceSelected = { onDeviceSelected(it) },
-            onRetry = {
-                appController.disconnect()
-            }
+            onRetry = { appController.disconnect() }
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppHorizontalPager(
     modifier: Modifier = Modifier,
     pagerState: PagerState,
-    topAppBarScrollBehaviorList: List<TopAppBarScrollBehavior>,
+    topAppBarScrollBehaviorList: List<ScrollBehavior>,
     padding: PaddingValues,
     canShowDetailPage: Boolean,
     isConnecting: Boolean,
@@ -330,13 +320,32 @@ fun AppHorizontalPager(
 
 @Composable
 fun ConnectingPage() {
+    val primaryColor = MiuixTheme.colorScheme.primary
+    val infiniteTransition = rememberInfiniteTransition(label = "loading")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(modifier = Modifier.size(48.dp))
+            Canvas(modifier = Modifier.size(48.dp)) {
+                drawArc(
+                    color = primaryColor,
+                    startAngle = angle,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
             Text(
                 stringResource(R.string.connecting),
-                modifier = Modifier.padding(top = 16.dp),
-                style = MaterialTheme.typography.bodyLarge
+                modifier = Modifier.padding(top = 16.dp)
             )
         }
     }
@@ -351,15 +360,13 @@ fun ErrorPage(onRetry: () -> Unit) {
         ) {
             Text(
                 stringResource(R.string.connect_failed),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.error
+                color = Color(0xFFFF3B30)
             )
             TextButton(
+                text = stringResource(R.string.retry),
                 onClick = onRetry,
                 modifier = Modifier.padding(top = 12.dp)
-            ) {
-                Text(stringResource(R.string.retry))
-            }
+            )
         }
     }
 }

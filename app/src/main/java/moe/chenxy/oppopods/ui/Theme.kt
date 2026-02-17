@@ -1,18 +1,16 @@
 package moe.chenxy.oppopods.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeController
 
 @Composable
-fun AppTheme(
-    content: @Composable () -> Unit
-) {
-    val darkTheme = isSystemInDarkTheme()
-    MaterialTheme(
-        colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
+fun AppTheme(content: @Composable () -> Unit) {
+    val controller = remember { ThemeController(ColorSchemeMode.System) }
+    MiuixTheme(
+        controller = controller,
         content = content
     )
 }

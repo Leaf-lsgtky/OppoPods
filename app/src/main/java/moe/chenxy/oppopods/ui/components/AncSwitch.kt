@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
 fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -> Unit) {
@@ -66,16 +65,15 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
                     .width(switchWidth)
                     .fillMaxHeight()
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isDarkMode) Color.Gray else Color.White,
+                Box(
                     modifier = Modifier
                         .width(switchWidth)
                         .fillMaxHeight()
                         .padding(3.dp)
                         .offset(x = offsetX.value)
                         .shadow(10.dp, RoundedCornerShape(8.dp))
-                ) {}
+                        .background(if (isDarkMode) Color.Gray else Color.White, RoundedCornerShape(8.dp))
+                )
             }
             Row(
                 modifier = Modifier.width(switchFullWidth),
