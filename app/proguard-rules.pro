@@ -9,6 +9,9 @@
 -overloadaggressively
 -renamesourcefileattribute SourceFile
 
+# Suppress missing class warnings from KavaRef (YukiHookAPI dependency)
+-dontwarn java.lang.reflect.AnnotatedType
+
 # Keep Xposed entry point
 -keep class moe.chenxy.oppopods.hook.HookEntry { *; }
 -keep class moe.chenxy.oppopods.hook.HookEntry_YukiHookXposedInit { *; }
