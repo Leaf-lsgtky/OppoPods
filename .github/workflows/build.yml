@@ -3,9 +3,9 @@ name: Build OppoPods
 on:
   push:
     tags: [ "*" ]
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
   workflow_dispatch:
 
 jobs:
@@ -45,7 +45,9 @@ jobs:
           ./gradlew assembleRelease
 
       - name: Sign release APK
-        if: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIGNING_KEY != '' }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') && env.SIGNING_KEY != '' }}
         uses: kevin-david/zipalign-sign-android-release@v2
         id: sign_app
         continue-on-error: true
@@ -68,19 +70,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OppoPods-release
-          path: |
-            ${{ steps.sign_app.outputs.signedReleaseFile }}
-            app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') && env.SIGNING_KEY != '' }}
         uses: ncipollo/release-action@v1
         continue-on-error: true
         with:
           token: ${{ github.token }}
-          artifacts: |
-            ${{ steps.sign_app.outputs.signedReleaseFile }}
-            app/build/outputs/apk/release/*.apk
+          artifacts: ${{ steps.sign_app.outputs.signedReleaseFile }}
           generateReleaseNotes: true
           makeLatest: true
           replacesArtifacts: true
