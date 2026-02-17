@@ -12,4 +12,16 @@
     <string name="batt_left_pod">"左: "</string>
     <string name="batt_right_pod">"右: "</string>
     <string name="waiting_for_pod">等待 OPPO 耳机连接...</string>
+    <string name="select_device">选择蓝牙设备</string>
+    <string name="no_paired_devices">未找到已配对设备，请先在系统蓝牙设置中配对耳机。</string>
+    <string name="unknown_device">未知设备</string>
+    <string name="input_mac_manually">手动输入 MAC 地址</string>
+    <string name="input_mac_title">输入设备 MAC 地址</string>
+    <string name="connect">连接</string>
+    <string name="cancel">取消</string>
+    <string name="connecting">连接中...</string>
+    <string name="connect_failed">连接失败，请确认设备已开机且在附近。</string>
+    <string name="retry">重试</string>
+    <string name="bt_permission_required">需要蓝牙权限才能发现耳机。</string>
+    <string name="grant_permission">授予权限</string>
 </resources>
