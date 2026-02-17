@@ -33,24 +33,28 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build debug APK
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        run: |
-          echo 'org.gradle.parallel=true' >> gradle.properties
-          echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
-          ./gradlew assembleDebug
-
       - name: Build release APK
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ env.SIGNING_KEY != '' }}
         run: |
           echo 'org.gradle.parallel=true' >> gradle.properties
           echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
           ./gradlew assembleRelease
 
+      - name: Build debug APK (fallback when no signing key)
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ env.SIGNING_KEY == '' }}
+        run: |
+          echo 'org.gradle.parallel=true' >> gradle.properties
+          echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
+          ./gradlew assembleDebug
+
       - name: Sign release APK
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ startsWith(github.ref, 'refs/tags/') && env.SIGNING_KEY != '' }}
+        if: ${{ env.SIGNING_KEY != '' }}
         uses: kevin-david/zipalign-sign-android-release@v2
         id: sign_app
         continue-on-error: true
@@ -61,19 +65,32 @@ jobs:
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Upload signed release APK
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ env.SIGNING_KEY != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: OppoPods-release
+          path: app/build/outputs/apk/release/*-signed.apk
+
+      - name: Upload unsigned release APK (if signing failed)
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ env.SIGNING_KEY != '' && steps.sign_app.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: OppoPods-release-unsigned
+          path: app/build/outputs/apk/release/*.apk
+
       - name: Upload debug APK
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        if: ${{ env.SIGNING_KEY == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: OppoPods-debug
           path: app/build/outputs/apk/debug/*.apk
-
-      - name: Upload release APK
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: OppoPods-release
-          path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         env:
