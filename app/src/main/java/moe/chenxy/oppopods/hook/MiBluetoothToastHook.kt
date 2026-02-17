@@ -11,46 +11,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.Icon
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import androidx.core.content.FileProvider
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.constructor
 import de.robv.android.xposed.XposedHelpers
+import moe.chenxy.oppopods.utils.FocusIslandUtil
 import moe.chenxy.oppopods.utils.SystemApisUtils
 import moe.chenxy.oppopods.utils.SystemApisUtils.cancelAsUser
 import moe.chenxy.oppopods.utils.SystemApisUtils.notifyAsUser
-import moe.chenxy.oppopods.utils.miuiStrongToast.MiuiStrongToastUtil.showPodsBatteryToast
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
-import java.io.File
 
 @SuppressLint("MissingPermission")
 object MiBluetoothToastHook : YukiBaseHooker() {
 
     override fun onHook() {
-        fun getResourcesUrl(context: Context, name: String): Uri? {
-            var uri: Uri? = null
-            try {
-                val file = File(context.filesDir, "my_internal_files")
-                if (file.exists()) {
-                    val str3 = "$name.mp4"
-                    val file2 = File(file, str3)
-                    if (file2.exists()) {
-                        uri = FileProvider.getUriForFile(
-                            context,
-                            "com.xiaomi.bluetooth.fileprovider",
-                            file2
-                        )
-                        context.grantUriPermission("com.android.systemui", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("OppoPods", "getResourcesUrl failed! ", e)
-            }
-            Log.d("OppoPods", "getResourceUri uri = $uri")
-            return uri
-        }
 
         fun deleteIntent(context: Context, bluetoothDevice: BluetoothDevice): PendingIntent? {
             val intent = Intent("com.android.bluetooth.headset.notification.cancle")
@@ -78,15 +53,19 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                     alias = bluetoothDevice.name
                 }
 
-                val caseBattStr = if (batteryParams.case!!.isConnected)
+                val caseBattStr = if (batteryParams.case != null && batteryParams.case!!.isConnected)
                     "${context.resources.getString(miheadset_notification_Box)}：${batteryParams.case!!.battery} %" +
                             "${if (batteryParams.case!!.isCharging) " ⚡" else ""}\n"
                 else ""
-                val leftEar = if (batteryParams.left!!.isConnected) "${context.resources.getString(miheadset_notification_LeftEar)}：${batteryParams.left!!.battery} %" +
-                        (if (batteryParams.left!!.isCharging) " ⚡" else "") else ""
-                val leftToRight = if (batteryParams.left!!.isConnected && batteryParams.right!!.isConnected) " | " else ""
-                val rightEar = if (batteryParams.right!!.isConnected) "$leftToRight${context.resources.getString(miheadset_notification_RightEar)}：${batteryParams.right!!.battery} %" +
-                        (if (batteryParams.right!!.isCharging) " ⚡" else "") else ""
+                val leftEar = if (batteryParams.left != null && batteryParams.left!!.isConnected)
+                    "${context.resources.getString(miheadset_notification_LeftEar)}：${batteryParams.left!!.battery} %" +
+                        (if (batteryParams.left!!.isCharging) " ⚡" else "")
+                else ""
+                val leftToRight = if (batteryParams.left?.isConnected == true && batteryParams.right?.isConnected == true) " | " else ""
+                val rightEar = if (batteryParams.right != null && batteryParams.right!!.isConnected)
+                    "$leftToRight${context.resources.getString(miheadset_notification_RightEar)}：${batteryParams.right!!.battery} %" +
+                        (if (batteryParams.right!!.isCharging) " ⚡" else "")
+                else ""
 
                 val content: String = caseBattStr + leftEar + rightEar
                 val notificationManager = context.getSystemService("notification") as NotificationManager
@@ -162,27 +141,8 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                         override fun onReceive(p0: Context?, p1: Intent?) {
                             if (p1?.action == "chen.action.oppopods.sendstrongtoast") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)!!
-
-                                val leftUri =
-                                    if (batteryParams.left!!.isConnected)
-                                        getResourcesUrl(context, "earphone_left_inear")
-                                    else
-                                        getResourcesUrl(context, "earphone_left_no_inear")
-                                val rightUri =
-                                    if (batteryParams.right!!.isConnected)
-                                        getResourcesUrl(context, "earphone_right_inear")
-                                    else
-                                        getResourcesUrl(context, "earphone_right_no_inear")
-
-                                if (leftUri != null && rightUri != null) {
-                                    showPodsBatteryToast(
-                                        context,
-                                        leftUri,
-                                        rightUri,
-                                        lowBatteryThreshold = 20,
-                                        batteryParams = batteryParams
-                                    )
-                                }
+                                // Use Focus Island (HyperOS 3+) for battery display
+                                FocusIslandUtil.showBatteryIsland(context, batteryParams)
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra<BatteryParams>("batteryParams", BatteryParams::class.java)
                                 val device = p1.getParcelableExtra("device", BluetoothDevice::class.java)
