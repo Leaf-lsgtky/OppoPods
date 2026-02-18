@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -71,21 +70,12 @@ sealed interface Screen : NavKey {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainUI() {
-    val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
-    val currentScreen = backStack.last()
     val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
-    val currentTitle = when (currentScreen) {
-        Screen.About -> stringResource(R.string.about)
-        Screen.Home -> mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
-    }
-
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
-
     val hookConnected = remember { mutableStateOf(false) }
 
     val appController = remember { AppRfcommController() }
@@ -199,100 +189,111 @@ fun MainUI() {
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = currentTitle,
-                largeTitle = if (currentScreen == Screen.Home) currentTitle else null,
-                scrollBehavior = topAppBarScrollBehavior,
-                horizontalPadding = 20.dp,
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (backStack.size > 1) {
-                                backStack.removeLast()
-                            } else {
-                                (context as? Activity)?.finish()
-                            }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Back,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                actions = {
-                    if (currentScreen == Screen.Home && canShowDetailPage) {
-                        IconButton(onClick = { refreshStatus() }) {
-                            Icon(
-                                imageVector = MiuixIcons.Refresh,
-                                contentDescription = "Refresh"
-                            )
-                        }
-                    }
-                    if (currentScreen == Screen.Home) {
-                        IconButton(
-                            onClick = { backStack.add(Screen.About) }
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Info,
-                                contentDescription = "About"
-                            )
-                        }
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        val entryProvider = remember(backStack) {
-            entryProvider<Screen> {
-                entry<Screen.Home> {
-                    AnimatedContent(
-                        targetState = when {
-                            canShowDetailPage -> "detail"
-                            isConnecting -> "connecting"
-                            isError -> "error"
-                            else -> "picker"
-                        },
-                        label = "MainPageAnim"
-                    ) { state ->
-                        Box(modifier = Modifier.padding(padding)) {
-                            when (state) {
-                                "detail" -> PodDetailPage(
-                                    batteryParams = displayBattery,
-                                    ancMode = displayAnc,
-                                    onAncModeChange = { setAncMode(it) }
+    // Each entry has its own Scaffold+TopAppBar so the full page transitions together
+    val entryProvider = entryProvider<Screen> {
+        entry<Screen.Home> {
+            val homeTitle = mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
+            val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = homeTitle,
+                        largeTitle = homeTitle,
+                        scrollBehavior = topAppBarScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { (context as? Activity)?.finish() }
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
                                 )
-                                "connecting" -> ConnectingPage()
-                                "error" -> ErrorPage(onRetry = { appController.disconnect() })
-                                else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
                             }
+                        },
+                        actions = {
+                            if (canShowDetailPage) {
+                                IconButton(onClick = { refreshStatus() }) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Refresh,
+                                        contentDescription = "Refresh"
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { backStack.add(Screen.About) }
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Info,
+                                    contentDescription = "About"
+                                )
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                AnimatedContent(
+                    targetState = when {
+                        canShowDetailPage -> "detail"
+                        isConnecting -> "connecting"
+                        isError -> "error"
+                        else -> "picker"
+                    },
+                    label = "MainPageAnim"
+                ) { state ->
+                    Box(modifier = Modifier.padding(padding)) {
+                        when (state) {
+                            "detail" -> PodDetailPage(
+                                batteryParams = displayBattery,
+                                ancMode = displayAnc,
+                                onAncModeChange = { setAncMode(it) }
+                            )
+                            "connecting" -> ConnectingPage()
+                            "error" -> ErrorPage(onRetry = { appController.disconnect() })
+                            else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
                         }
                     }
                 }
-                entry<Screen.About> {
-                    AboutPage(modifier = Modifier.padding(padding))
-                }
             }
         }
-
-        val entries = rememberDecoratedNavEntries(
-            backStack = backStack,
-            entryProvider = entryProvider
-        )
-
-        NavDisplay(
-            entries = entries,
-            onBack = {
-                if (backStack.size > 1) {
-                    backStack.removeLast()
-                } else {
-                    (context as? Activity)?.finish()
+        entry<Screen.About> {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.about),
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { backStack.removeLast() }
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    )
                 }
+            ) { padding ->
+                AboutPage(modifier = Modifier.padding(padding))
             }
-        )
+        }
     }
+
+    val entries = rememberDecoratedNavEntries(
+        backStack = backStack,
+        entryProvider = entryProvider
+    )
+
+    NavDisplay(
+        entries = entries,
+        onBack = {
+            if (backStack.size > 1) {
+                backStack.removeLast()
+            } else {
+                (context as? Activity)?.finish()
+            }
+        }
+    )
 }
 
 @Composable
