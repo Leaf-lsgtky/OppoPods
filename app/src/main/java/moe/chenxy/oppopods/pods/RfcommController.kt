@@ -118,6 +118,10 @@ object RfcommController {
             OppoPodsAction.ACTION_REFRESH_STATUS -> {
                 queryStatus()
             }
+            OppoPodsAction.ACTION_GAME_MODE_SET -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                setGameMode(enabled)
+            }
         }
     }
 
@@ -212,6 +216,7 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
             this.addAction(OppoPodsAction.ACTION_GET_PODS_MAC)
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
+            this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
         }, Context.RECEIVER_EXPORTED)
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
@@ -341,6 +346,14 @@ object RfcommController {
             socket?.outputStream?.flush()
         } catch (e: IOException) {
             Log.e(TAG, "Send packet failed", e)
+        }
+    }
+
+    fun setGameMode(enabled: Boolean) {
+        Log.d(TAG, "setGameMode: $enabled")
+        val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(packet)
         }
     }
 

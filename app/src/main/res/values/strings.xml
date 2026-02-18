@@ -3,7 +3,11 @@
     <string name="app_subtitle">OPPO Earphones for HyperOS</string>
     <string name="pod_info">Pod Info</string>
     <string name="about">About OppoPods</string>
+    <string name="settings">Settings</string>
     <string name="based_on">Based on</string>
+    <string name="game_mode">Game Mode</string>
+    <string name="game_mode_summary">Low latency audio mode</string>
+    <string name="auto_game_mode">Auto-enable game mode on connect</string>
     <string name="off">Off</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>

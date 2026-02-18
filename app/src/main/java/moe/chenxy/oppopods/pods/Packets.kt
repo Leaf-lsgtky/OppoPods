@@ -52,6 +52,8 @@ object BatteryComponent {
 object Cmd {
     /** Set ANC mode */
     const val SET_ANC = 0x0404
+    /** Set game mode */
+    const val SET_GAME_MODE = 0x0403
     /** Query battery */
     const val QUERY_BATTERY = 0x0106
     /** Battery response from earphone */
@@ -89,6 +91,16 @@ object Enums {
     /** Query ANC mode: AA 09 00 00 0C 01 00 02 00 01 01 */
     val QUERY_ANC: ByteArray = OppoPackets.buildPacket(
         cmd = Cmd.QUERY_ANC_MODE, payload = byteArrayOf(0x01, 0x01)
+    )
+
+    /** Enable game mode: AA 09 00 00 03 04 00 02 00 28 01 */
+    val GAME_MODE_ON: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(0x28, 0x01)
+    )
+
+    /** Disable game mode: AA 09 00 00 03 04 00 02 00 28 00 */
+    val GAME_MODE_OFF: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(0x28, 0x00)
     )
 }
 

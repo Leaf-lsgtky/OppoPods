@@ -51,6 +51,9 @@ class AppRfcommController {
     private val _deviceName = MutableStateFlow("")
     val deviceName: StateFlow<String> = _deviceName
 
+    private val _gameMode = MutableStateFlow(false)
+    val gameMode: StateFlow<Boolean> = _gameMode
+
     @SuppressLint("DiscouragedPrivateApi")
     private fun createRfcommSocket(device: BluetoothDevice): BluetoothSocket {
         val method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
@@ -158,6 +161,12 @@ class AppRfcommController {
         }
     }
 
+    fun setGameMode(enabled: Boolean) {
+        _gameMode.value = enabled
+        val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
+        scope.launch { sendPacket(packet) }
+    }
+
     fun setANCMode(mode: NoiseControlMode) {
         val packet = when (mode) {
             NoiseControlMode.OFF -> Enums.ANC_OFF
@@ -196,5 +205,6 @@ class AppRfcommController {
         _batteryParams.value = BatteryParams()
         _ancMode.value = NoiseControlMode.OFF
         _deviceName.value = ""
+        _gameMode.value = false
     }
 }

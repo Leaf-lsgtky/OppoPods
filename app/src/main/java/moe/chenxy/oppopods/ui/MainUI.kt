@@ -58,13 +58,13 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 sealed interface Screen : NavKey {
     data object Home : Screen
-    data object About : Screen
+    data object Settings : Screen
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -73,19 +73,22 @@ fun MainUI() {
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
-    // Debug: adjustable extra padding for TopAppBar icon buttons
-    val debugPadding = remember { mutableStateOf(0f) }
-
     val mainTitle = remember { mutableStateOf("") }
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
     val hookConnected = remember { mutableStateOf(false) }
+    val gameMode = remember { mutableStateOf(false) }
+
+    // Auto game mode preference (persisted)
+    val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+    val autoGameMode = remember { mutableStateOf(prefs.getBoolean("auto_game_mode", false)) }
 
     val appController = remember { AppRfcommController() }
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
     val appAnc by appController.ancMode.collectAsState()
     val appDeviceName by appController.deviceName.collectAsState()
+    val appGameMode by appController.gameMode.collectAsState()
 
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
@@ -94,6 +97,7 @@ fun MainUI() {
 
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
+    val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
     val displayTitle = when {
         hookConnected.value -> mainTitle.value
         isStandaloneConnected -> appDeviceName
@@ -180,6 +184,18 @@ fun MainUI() {
         }
     }
 
+    fun setGameMode(enabled: Boolean) {
+        if (isStandaloneConnected) {
+            appController.setGameMode(enabled)
+            return
+        }
+        gameMode.value = enabled
+        Intent(OppoPodsAction.ACTION_GAME_MODE_SET).apply {
+            this.putExtra("enabled", enabled)
+            context.sendBroadcast(this)
+        }
+    }
+
     fun onDeviceSelected(device: BluetoothDevice) {
         appController.connect(device)
     }
@@ -189,6 +205,13 @@ fun MainUI() {
             appController.refreshStatus()
         } else if (hookConnected.value) {
             context.sendBroadcast(Intent(OppoPodsAction.ACTION_REFRESH_STATUS))
+        }
+    }
+
+    // Auto-enable game mode when connected
+    LaunchedEffect(canShowDetailPage) {
+        if (canShowDetailPage && autoGameMode.value) {
+            setGameMode(true)
         }
     }
 
@@ -207,7 +230,7 @@ fun MainUI() {
                         navigationIcon = {
                             IconButton(
                                 onClick = { (context as? Activity)?.finish() },
-                                modifier = Modifier.padding(start = debugPadding.value.dp)
+                                modifier = Modifier.padding(start = 16.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Back,
@@ -225,12 +248,12 @@ fun MainUI() {
                                 }
                             }
                             IconButton(
-                                onClick = { backStack.add(Screen.About) },
-                                modifier = Modifier.padding(end = debugPadding.value.dp)
+                                onClick = { backStack.add(Screen.Settings) },
+                                modifier = Modifier.padding(end = 16.dp)
                             ) {
                                 Icon(
-                                    imageVector = MiuixIcons.Info,
-                                    contentDescription = "About"
+                                    imageVector = MiuixIcons.Settings,
+                                    contentDescription = "Settings"
                                 )
                             }
                         }
@@ -251,7 +274,9 @@ fun MainUI() {
                             "detail" -> PodDetailPage(
                                 batteryParams = displayBattery,
                                 ancMode = displayAnc,
-                                onAncModeChange = { setAncMode(it) }
+                                onAncModeChange = { setAncMode(it) },
+                                gameMode = displayGameMode,
+                                onGameModeChange = { setGameMode(it) }
                             )
                             "connecting" -> ConnectingPage()
                             "error" -> ErrorPage(onRetry = { appController.disconnect() })
@@ -261,15 +286,15 @@ fun MainUI() {
                 }
             }
         }
-        entry<Screen.About> {
+        entry<Screen.Settings> {
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = stringResource(R.string.about),
+                        title = stringResource(R.string.settings),
                         navigationIcon = {
                             IconButton(
                                 onClick = { backStack.removeLast() },
-                                modifier = Modifier.padding(start = debugPadding.value.dp)
+                                modifier = Modifier.padding(start = 16.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Back,
@@ -280,7 +305,14 @@ fun MainUI() {
                     )
                 }
             ) { padding ->
-                AboutPage(modifier = Modifier.padding(padding), debugPadding = debugPadding)
+                SettingsPage(
+                    modifier = Modifier.padding(padding),
+                    autoGameMode = autoGameMode,
+                    onAutoGameModeChange = {
+                        autoGameMode.value = it
+                        prefs.edit().putBoolean("auto_game_mode", it).apply()
+                    }
+                )
             }
         }
     }
