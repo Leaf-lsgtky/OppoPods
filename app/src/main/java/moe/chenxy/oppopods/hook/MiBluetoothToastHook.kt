@@ -96,10 +96,8 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                 val pendingIntent = PendingIntent.getActivity(
                     context,
                     0,
-                    Intent("chen.action.oppopods.show_pods_ui").apply {
-                        putExtra("show_popup", true)
-                    },
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    Intent("chen.action.oppopods.show_pods_ui"),
+                    PendingIntent.FLAG_IMMUTABLE
                 )
                 notificationManager.notifyAsUser(
                     "BTHeadset$address",

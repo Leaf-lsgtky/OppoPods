@@ -87,7 +87,6 @@ object DeviceCardHook : YukiBaseHooker() {
                     if (mac == id) {
                         Intent("chen.action.oppopods.show_pods_ui").apply {
                             this.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            this.putExtra("show_popup", true)
                             context.startActivity(this)
                         }
                         mac = ""

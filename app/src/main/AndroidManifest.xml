@@ -21,6 +21,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+        <activity android:name=".PopupActivity"
+            android:theme="@style/Theme.OppoPods.Popup"
+            android:excludeFromRecents="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="chen.action.oppopods.show_pods_ui" />
                 <category android:name="android.intent.category.DEFAULT" />
