@@ -33,9 +33,9 @@ fun PodDetailPage(
                 painter = painterResource(R.drawable.img_box),
                 contentDescription = "Earphones",
                 modifier = Modifier
-                    .fillMaxWidth(0.5f)
+                    .fillMaxWidth(0.7f)
                     .padding(vertical = 16.dp),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.FillWidth
             )
         }
 
@@ -43,7 +43,7 @@ fun PodDetailPage(
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp)
             ) {
-                PodStatus(batteryParams, modifier = Modifier.padding(16.dp))
+                PodStatus(batteryParams, modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp))
             }
         }
 

@@ -1,12 +1,16 @@
 package moe.chenxy.oppopods.ui.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,17 +33,29 @@ import top.yukonga.miuix.kmp.basic.Text
 fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly
+        verticalAlignment = Alignment.CenterVertically
     ) {
         BatteryColumn(
             label = stringResource(R.string.batt_left_pod),
             pod = batteryParams.left,
             modifier = Modifier.weight(1f)
         )
+        Box(
+            modifier = Modifier
+                .width(0.5.dp)
+                .height(56.dp)
+                .background(Color(0xFFEEEEEE))
+        )
         BatteryColumn(
             label = stringResource(R.string.batt_right_pod),
             pod = batteryParams.right,
             modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .width(0.5.dp)
+                .height(56.dp)
+                .background(Color(0xFFEEEEEE))
         )
         BatteryColumn(
             label = stringResource(R.string.pod_case),
@@ -54,7 +70,6 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
     val isConnected = pod != null && pod.isConnected
     val level = pod?.battery ?: 0
 
-    // Track last known battery level for disconnected icon
     var lastKnownLevel by remember { mutableIntStateOf(100) }
     if (isConnected && level > 0) {
         lastKnownLevel = level
@@ -62,12 +77,11 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
 
     val displayLevel = if (isConnected) "$level%" else "-"
     val iconLevel = if (isConnected) level else lastKnownLevel
-    val iconCharging = false // disconnected always shows non-charging icon
 
     Column(
-        horizontalAlignment = Alignment.Start,
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = modifier.padding(horizontal = 8.dp)
+        modifier = modifier.padding(vertical = 4.dp)
     ) {
         Text(
             text = label,
@@ -81,7 +95,7 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
         )
         Image(
             painter = painterResource(
-                getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else iconCharging)
+                getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)
             ),
             contentDescription = "$label $displayLevel",
             modifier = Modifier.size(24.dp)

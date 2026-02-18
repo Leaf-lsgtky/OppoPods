@@ -38,28 +38,31 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 16.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
+        verticalAlignment = Alignment.CenterVertically
     ) {
         AncButton(
             iconRes = R.drawable.ic_transparency,
             label = stringResource(R.string.transparency_title),
             isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
             isDarkMode = isDarkMode,
-            onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) }
+            onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
+            modifier = Modifier.weight(1f)
         )
         AncButton(
             iconRes = R.drawable.ic_anc,
             label = stringResource(R.string.noise_cancellation_title),
             isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION,
             isDarkMode = isDarkMode,
-            onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) }
+            onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
+            modifier = Modifier.weight(1f)
         )
         AncButton(
             iconRes = R.drawable.ic_normal,
             label = stringResource(R.string.off),
             isSelected = ancStatus == NoiseControlMode.OFF,
             isDarkMode = isDarkMode,
-            onClick = { onAncModeChange(NoiseControlMode.OFF) }
+            onClick = { onAncModeChange(NoiseControlMode.OFF) },
+            modifier = Modifier.weight(1f)
         )
     }
 }
@@ -70,10 +73,12 @@ private fun AncButton(
     label: String,
     isSelected: Boolean,
     isDarkMode: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
     ) {
         Box(
             modifier = Modifier
@@ -83,7 +88,7 @@ private fun AncButton(
                     when {
                         isSelected -> MiuixTheme.colorScheme.primary
                         isDarkMode -> Color(0xFF3C3C3C)
-                        else -> Color(0xFFE8E8EC)
+                        else -> Color(0xFFE8E8E8)
                     }
                 )
                 .clickable(onClick = onClick),
@@ -96,16 +101,16 @@ private fun AncButton(
                     when {
                         isSelected -> Color.White
                         isDarkMode -> Color.LightGray
-                        else -> Color.Gray
+                        else -> Color(0xFF5E5E5E)
                     }
                 ),
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             label,
-            fontSize = 12.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground
         )

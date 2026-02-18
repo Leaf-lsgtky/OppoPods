@@ -44,11 +44,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
@@ -68,9 +63,6 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-@Volatile
-var restoreAncJob: Job? = null
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -129,7 +121,6 @@ fun MainUI() {
                             3 -> NoiseControlMode.TRANSPARENCY
                             else -> NoiseControlMode.OFF
                         }
-                        restoreAncJob?.cancel()
                     }
 
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
@@ -179,7 +170,7 @@ fun MainUI() {
             appController.setANCMode(mode)
             return
         }
-        if (restoreAncJob?.isActive == true) return
+        ancMode.value = mode
         val status = when (mode) {
             NoiseControlMode.OFF -> 1
             NoiseControlMode.NOISE_CANCELLATION -> 2
@@ -188,12 +179,6 @@ fun MainUI() {
         Intent(OppoPodsAction.ACTION_ANC_SELECT).apply {
             this.putExtra("status", status)
             context.sendBroadcast(this)
-        }
-        restoreAncJob = CoroutineScope(Dispatchers.Default).launch {
-            val oldAncMode = ancMode.value
-            ancMode.value = mode
-            delay(1000)
-            ancMode.value = oldAncMode
         }
     }
 
