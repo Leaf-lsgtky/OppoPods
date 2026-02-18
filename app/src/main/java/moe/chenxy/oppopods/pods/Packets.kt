@@ -29,7 +29,7 @@ object OppoPackets {
     }
 }
 
-/** ANC mode values for OPPO earphones. */
+/** ANC mode values for OPPO earphones (used in SET commands). */
 object AncMode {
     const val OFF = 0x01
     const val NOISE_CANCELLATION = 0x02
@@ -56,6 +56,12 @@ object Cmd {
     const val QUERY_BATTERY = 0x0106
     /** Battery response from earphone */
     const val BATTERY_RESPONSE = 0x8106
+    /** Query ANC mode */
+    const val QUERY_ANC_MODE = 0x010C
+    /** ANC mode response */
+    const val ANC_MODE_RESPONSE = 0x810C
+    /** ANC mode change notification */
+    const val ANC_MODE_NOTIFY = 0x0204
 }
 
 /** Pre-built packets. */
@@ -78,6 +84,11 @@ object Enums {
     /** Query battery: AA 07 00 00 06 01 00 00 00 */
     val QUERY_BATTERY: ByteArray = byteArrayOf(
         0xAA.toByte(), 0x07, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00
+    )
+
+    /** Query ANC mode: AA 09 00 00 0C 01 00 02 00 01 01 */
+    val QUERY_ANC: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.QUERY_ANC_MODE, payload = byteArrayOf(0x01, 0x01)
     )
 }
 
@@ -144,5 +155,44 @@ object BatteryParser {
         }
 
         return BatteryResult(left, right, case)
+    }
+}
+
+/**
+ * Parser for OPPO earphone ANC mode response/notification packets.
+ *
+ * Cmd: 0x810C (mode query response) or 0x0204 (mode change notification)
+ * Scan payload for consecutive bytes 01 01 [Val]
+ * Val mapping: 0x10=NC, 0x00=Transparency, 0x08=Off
+ */
+object AncModeParser {
+
+    fun parse(data: ByteArray): NoiseControlMode? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+
+        if (cmd != Cmd.ANC_MODE_RESPONSE && cmd != Cmd.ANC_MODE_NOTIFY) return null
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+
+        if (data.size < payloadStart + payLen) return null
+
+        // Scan for pattern: 01 01 [Val]
+        for (i in payloadStart until minOf(payloadStart + payLen - 2, data.size - 2)) {
+            if (data[i] == 0x01.toByte() && data[i + 1] == 0x01.toByte()) {
+                return when (data[i + 2].toInt() and 0xFF) {
+                    0x10 -> NoiseControlMode.NOISE_CANCELLATION
+                    0x00 -> NoiseControlMode.TRANSPARENCY
+                    0x08 -> NoiseControlMode.OFF
+                    else -> null
+                }
+            }
+        }
+        return null
     }
 }

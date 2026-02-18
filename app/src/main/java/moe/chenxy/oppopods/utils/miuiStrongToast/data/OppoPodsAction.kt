@@ -9,4 +9,5 @@ object OppoPodsAction {
     const val ACTION_PODS_ANC_CHANGED = "chen.action.oppopods.pods_anc_select"
     const val ACTION_GET_PODS_MAC = "chen.action.oppopods.get_pods_mac"
     const val ACTION_PODS_MAC_RECEIVED = "chen.action.oppopods.get_pods_mac"
+    const val ACTION_REFRESH_STATUS = "chen.action.oppopods.refresh_status"
 }

@@ -1,6 +1,5 @@
 package moe.chenxy.oppopods.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,8 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -18,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
@@ -26,44 +31,60 @@ fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        AnimatedVisibility(batteryParams.left != null && batteryParams.left?.isConnected == true) {
-            BatteryColumn(
-                label = stringResource(R.string.batt_left_pod),
-                level = batteryParams.left?.battery ?: 0,
-                isCharging = batteryParams.left?.isCharging ?: false
-            )
-        }
-
-        AnimatedVisibility(batteryParams.right != null && batteryParams.right?.isConnected == true) {
-            BatteryColumn(
-                label = stringResource(R.string.batt_right_pod),
-                level = batteryParams.right?.battery ?: 0,
-                isCharging = batteryParams.right?.isCharging ?: false
-            )
-        }
-
-        AnimatedVisibility(batteryParams.case != null && batteryParams.case?.isConnected == true) {
-            BatteryColumn(
-                label = stringResource(R.string.pod_case),
-                level = batteryParams.case?.battery ?: 0,
-                isCharging = batteryParams.case?.isCharging ?: false
-            )
-        }
+        BatteryColumn(
+            label = stringResource(R.string.batt_left_pod),
+            pod = batteryParams.left,
+            modifier = Modifier.weight(1f)
+        )
+        BatteryColumn(
+            label = stringResource(R.string.batt_right_pod),
+            pod = batteryParams.right,
+            modifier = Modifier.weight(1f)
+        )
+        BatteryColumn(
+            label = stringResource(R.string.pod_case),
+            pod = batteryParams.case,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
 @Composable
-private fun BatteryColumn(label: String, level: Int, isCharging: Boolean) {
+private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = Modifier) {
+    val isConnected = pod != null && pod.isConnected
+    val level = pod?.battery ?: 0
+
+    // Track last known battery level for disconnected icon
+    var lastKnownLevel by remember { mutableIntStateOf(100) }
+    if (isConnected && level > 0) {
+        lastKnownLevel = level
+    }
+
+    val displayLevel = if (isConnected) "$level%" else "-"
+    val iconLevel = if (isConnected) level else lastKnownLevel
+    val iconCharging = false // disconnected always shows non-charging icon
+
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = modifier.padding(horizontal = 8.dp)
     ) {
-        Text(label, fontSize = 14.sp)
-        Text("$level%", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = label,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = displayLevel,
+            fontSize = 13.sp,
+            color = Color.Gray
+        )
         Image(
-            painter = painterResource(getBatteryIconRes(level, isCharging)),
-            contentDescription = "$label $level%",
-            modifier = Modifier.size(32.dp)
+            painter = painterResource(
+                getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else iconCharging)
+            ),
+            contentDescription = "$label $displayLevel",
+            modifier = Modifier.size(24.dp)
         )
     }
 }

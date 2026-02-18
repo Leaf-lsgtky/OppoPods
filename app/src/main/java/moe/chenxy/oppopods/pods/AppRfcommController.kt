@@ -75,7 +75,7 @@ class AppRfcommController {
                 startPacketReader(socket!!.inputStream)
 
                 delay(300)
-                queryBattery()
+                queryStatus()
             } catch (e: IOException) {
                 Log.e(TAG, "RFCOMM connect failed", e)
                 _connectionState.value = ConnectionState.ERROR
@@ -87,7 +87,7 @@ class AppRfcommController {
             delay(2000)
             while (isConnected) {
                 delay(BATTERY_POLL_INTERVAL_MS)
-                if (isConnected) queryBattery()
+                if (isConnected) queryStatus()
             }
         }
     }
@@ -138,6 +138,14 @@ class AppRfcommController {
                 0
             )
             _batteryParams.value = BatteryParams(left, right, case)
+            return
+        }
+
+        val ancResult = AncModeParser.parse(packet)
+        if (ancResult != null) {
+            Log.d(TAG, "ANC mode received: $ancResult")
+            _ancMode.value = ancResult
+            return
         }
     }
 
@@ -160,8 +168,23 @@ class AppRfcommController {
         scope.launch { sendPacket(packet) }
     }
 
-    private fun queryBattery() {
-        scope.launch { sendPacket(Enums.QUERY_BATTERY) }
+    /**
+     * Combo query strategy: send battery query (wake), wait 50ms, then mode query.
+     */
+    private fun queryStatus() {
+        scope.launch {
+            sendPacket(Enums.QUERY_BATTERY)
+            delay(50)
+            sendPacket(Enums.QUERY_ANC)
+        }
+    }
+
+    /**
+     * Public method for UI refresh button.
+     */
+    fun refreshStatus() {
+        if (!isConnected) return
+        queryStatus()
     }
 
     fun disconnect() {

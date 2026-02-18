@@ -9,13 +9,18 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +66,7 @@ import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Volatile
@@ -195,6 +201,14 @@ fun MainUI() {
         appController.connect(device)
     }
 
+    fun refreshStatus() {
+        if (isStandaloneConnected) {
+            appController.refreshStatus()
+        } else if (hookConnected.value) {
+            context.sendBroadcast(Intent(OppoPodsAction.ACTION_REFRESH_STATUS))
+        }
+    }
+
     BackHandler(enabled = currentPage == "about") {
         currentPage = "main"
     }
@@ -220,6 +234,14 @@ fun MainUI() {
                     }
                 },
                 actions = {
+                    if (currentPage == "main" && canShowDetailPage) {
+                        IconButton(onClick = { refreshStatus() }) {
+                            Icon(
+                                imageVector = MiuixIcons.Refresh,
+                                contentDescription = "Refresh"
+                            )
+                        }
+                    }
                     if (currentPage == "main") {
                         IconButton(onClick = { currentPage = "about" }) {
                             Icon(
@@ -232,13 +254,22 @@ fun MainUI() {
             )
         }
     ) { padding ->
-        Crossfade(
+        AnimatedContent(
             targetState = currentPage,
+            transitionSpec = {
+                if (targetState == "about") {
+                    slideInHorizontally { it } + fadeIn() togetherWith
+                            slideOutHorizontally { -it / 3 } + fadeOut()
+                } else {
+                    slideInHorizontally { -it / 3 } + fadeIn() togetherWith
+                            slideOutHorizontally { it } + fadeOut()
+                }
+            },
             label = "PageTransition"
         ) { page ->
             when (page) {
                 "about" -> AboutPage(modifier = Modifier.padding(padding))
-                else -> Crossfade(
+                else -> AnimatedContent(
                     targetState = when {
                         canShowDetailPage -> "detail"
                         isConnecting -> "connecting"

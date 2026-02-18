@@ -115,6 +115,9 @@ object RfcommController {
                 val status = intent.getIntExtra("status", 0)
                 setANCMode(status)
             }
+            OppoPodsAction.ACTION_REFRESH_STATUS -> {
+                queryStatus()
+            }
         }
     }
 
@@ -208,6 +211,7 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_ANC_SELECT)
             this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
             this.addAction(OppoPodsAction.ACTION_GET_PODS_MAC)
+            this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
         }, Context.RECEIVER_EXPORTED)
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
@@ -232,9 +236,9 @@ object RfcommController {
                 // Start reader thread
                 startPacketReader(socket!!.inputStream)
 
-                // Initial battery query
+                // Initial status query (combo: battery wake + mode)
                 delay(300)
-                queryBattery()
+                queryStatus()
             } catch (e: IOException) {
                 Log.e(TAG, "RFCOMM connect failed", e)
                 isConnected = false
@@ -248,7 +252,7 @@ object RfcommController {
             while (isConnected) {
                 delay(BATTERY_POLL_INTERVAL_MS)
                 if (isConnected) {
-                    queryBattery()
+                    queryStatus()
                 }
             }
         }
@@ -286,6 +290,19 @@ object RfcommController {
         val batteryResult = BatteryParser.parse(packet)
         if (batteryResult != null) {
             handleBatteryChanged(batteryResult)
+            return
+        }
+
+        // Try parse as ANC mode response
+        val ancResult = AncModeParser.parse(packet)
+        if (ancResult != null) {
+            Log.d(TAG, "ANC mode received: $ancResult")
+            currentAnc = when (ancResult) {
+                NoiseControlMode.OFF -> 1
+                NoiseControlMode.NOISE_CANCELLATION -> 2
+                NoiseControlMode.TRANSPARENCY -> 3
+            }
+            changeUIAncStatus(currentAnc)
             return
         }
 
@@ -343,6 +360,17 @@ object RfcommController {
     fun queryBattery() {
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(Enums.QUERY_BATTERY)
+        }
+    }
+
+    /**
+     * Combo query strategy: send battery query (wake), wait 50ms, then mode query.
+     */
+    fun queryStatus() {
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(Enums.QUERY_BATTERY)
+            delay(50)
+            sendPacketSafe(Enums.QUERY_ANC)
         }
     }
 

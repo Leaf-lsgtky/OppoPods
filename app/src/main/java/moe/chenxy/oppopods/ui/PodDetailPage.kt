@@ -33,8 +33,8 @@ fun PodDetailPage(
                 painter = painterResource(R.drawable.img_box),
                 contentDescription = "Earphones",
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 48.dp, vertical = 16.dp),
+                    .fillMaxWidth(0.5f)
+                    .padding(vertical = 16.dp),
                 contentScale = ContentScale.Fit
             )
         }
