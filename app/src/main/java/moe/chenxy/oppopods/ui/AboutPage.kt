@@ -41,6 +41,16 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 BasicComponent(
+                    title = "OppoPods",
+                    summary = "https://github.com/Leaf-lsgtky/OppoPods",
+                    onClick = {
+                        Intent(Intent.ACTION_VIEW).apply {
+                            this.data = Uri.parse("https://github.com/Leaf-lsgtky/OppoPods")
+                            context.startActivity(this)
+                        }
+                    }
+                )
+                BasicComponent(
                     title = stringResource(R.string.based_on),
                     summary = "HyperPods by Art_Chen"
                 )
