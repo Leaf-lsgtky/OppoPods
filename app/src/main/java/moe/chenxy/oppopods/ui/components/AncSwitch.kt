@@ -3,8 +3,8 @@ package moe.chenxy.oppopods.ui.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +30,8 @@ import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.SinkFeedback
+import top.yukonga.miuix.kmp.utils.pressable
 
 @Composable
 fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -> Unit) {
@@ -76,9 +79,13 @@ private fun AncButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
+            .pressable(interactionSource = interactionSource, indication = SinkFeedback())
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         Box(
             modifier = Modifier
@@ -90,8 +97,7 @@ private fun AncButton(
                         isDarkMode -> Color(0xFF3C3C3C)
                         else -> Color(0xFFE8E8E8)
                     }
-                )
-                .clickable(onClick = onClick),
+                ),
             contentAlignment = Alignment.Center
         ) {
             Image(

@@ -69,8 +69,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MainUI() {
     val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val topBarHorizontalPadding = (screenWidthDp * 0.1f).dp
+    // IconButton is 40dp with icon centered, so ~8dp internal padding per side
+    val edgePadding = maxOf((LocalConfiguration.current.screenWidthDp * 0.1f - 8f), 0f).dp
 
     var currentPage by remember { mutableStateOf("main") }
     val context = LocalContext.current
@@ -207,15 +207,18 @@ fun MainUI() {
                 title = currentTitle,
                 largeTitle = if (currentPage == "main") currentTitle else null,
                 scrollBehavior = topAppBarScrollBehavior,
-                horizontalPadding = topBarHorizontalPadding,
+                horizontalPadding = 0.dp,
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (currentPage == "about") {
-                            currentPage = "main"
-                        } else {
-                            (context as? Activity)?.finish()
-                        }
-                    }) {
+                    IconButton(
+                        onClick = {
+                            if (currentPage == "about") {
+                                currentPage = "main"
+                            } else {
+                                (context as? Activity)?.finish()
+                            }
+                        },
+                        modifier = Modifier.padding(start = edgePadding)
+                    ) {
                         Icon(
                             imageVector = MiuixIcons.Back,
                             contentDescription = "Back"
@@ -232,7 +235,10 @@ fun MainUI() {
                         }
                     }
                     if (currentPage == "main") {
-                        IconButton(onClick = { currentPage = "about" }) {
+                        IconButton(
+                            onClick = { currentPage = "about" },
+                            modifier = Modifier.padding(end = edgePadding)
+                        ) {
                             Icon(
                                 imageVector = MiuixIcons.Info,
                                 contentDescription = "About"
