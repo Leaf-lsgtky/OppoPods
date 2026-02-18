@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,7 +30,6 @@ import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -58,6 +58,7 @@ class PopupActivity : ComponentActivity() {
 private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
     val showDialog = remember { mutableStateOf(true) }
+    val isDarkMode = isSystemInDarkTheme()
 
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
@@ -128,11 +129,13 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }
     }
 
-    Scaffold { _ ->
+    val dialogBgColor = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFFF7F7F7)
+
+    Scaffold(containerColor = Color.Transparent) { _ ->
         SuperDialog(
             title = deviceName.value.ifEmpty { stringResource(R.string.app_name) },
             show = showDialog,
-            backgroundColor = Color(0xFFF7F7F7),
+            backgroundColor = dialogBgColor,
             onDismissRequest = {
                 showDialog.value = false
             },
@@ -168,16 +171,14 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     TextButton(
                         text = stringResource(R.string.more),
                         onClick = onMore,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColors(color = Color.White)
+                        modifier = Modifier.weight(1f)
                     )
                     TextButton(
                         text = stringResource(R.string.done),
                         onClick = {
                             showDialog.value = false
                         },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColors(color = Color.White)
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
