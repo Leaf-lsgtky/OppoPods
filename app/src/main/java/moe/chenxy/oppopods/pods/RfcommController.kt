@@ -244,6 +244,13 @@ object RfcommController {
                 // Initial status query (combo: battery wake + mode)
                 delay(300)
                 queryStatus()
+
+                // Auto-enable game mode if preference is set
+                val prefs = context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("auto_game_mode", false)) {
+                    delay(100)
+                    sendPacketSafe(Enums.GAME_MODE_ON)
+                }
             } catch (e: IOException) {
                 Log.e(TAG, "RFCOMM connect failed", e)
                 isConnected = false

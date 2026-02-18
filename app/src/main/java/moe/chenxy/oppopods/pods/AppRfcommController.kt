@@ -60,7 +60,7 @@ class AppRfcommController {
         return method.invoke(device, RFCOMM_CHANNEL) as BluetoothSocket
     }
 
-    fun connect(device: BluetoothDevice) {
+    fun connect(device: BluetoothDevice, autoGameMode: Boolean = false) {
         if (_connectionState.value == ConnectionState.CONNECTING) return
 
         _deviceName.value = device.name ?: device.address
@@ -79,6 +79,12 @@ class AppRfcommController {
 
                 delay(300)
                 queryStatus()
+
+                if (autoGameMode) {
+                    delay(100)
+                    sendPacket(Enums.GAME_MODE_ON)
+                    _gameMode.value = true
+                }
             } catch (e: IOException) {
                 Log.e(TAG, "RFCOMM connect failed", e)
                 _connectionState.value = ConnectionState.ERROR

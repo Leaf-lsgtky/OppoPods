@@ -28,4 +28,6 @@
     <string name="retry">重试</string>
     <string name="bt_permission_required">需要蓝牙权限才能发现耳机。</string>
     <string name="grant_permission">授予权限</string>
+    <string name="more">更多</string>
+    <string name="done">完成</string>
 </resources>

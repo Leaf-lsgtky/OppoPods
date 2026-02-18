@@ -19,14 +19,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,8 +51,11 @@ import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import moe.chenxy.oppopods.ui.components.AncSwitch
+import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -57,6 +64,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.extra.SuperDialog
+import top.yukonga.miuix.kmp.extra.SuperSwitch
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
@@ -70,7 +79,10 @@ sealed interface Screen : NavKey {
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
-fun MainUI() {
+fun MainUI(
+    showPopup: MutableState<Boolean> = mutableStateOf(false),
+    onFinish: () -> Unit = {}
+) {
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
@@ -198,7 +210,7 @@ fun MainUI() {
     }
 
     fun onDeviceSelected(device: BluetoothDevice) {
-        appController.connect(device)
+        appController.connect(device, autoGameMode = autoGameMode.value)
     }
 
     fun refreshStatus() {
@@ -206,14 +218,6 @@ fun MainUI() {
             appController.refreshStatus()
         } else if (hookConnected.value) {
             context.sendBroadcast(Intent(OppoPodsAction.ACTION_REFRESH_STATUS))
-        }
-    }
-
-    // Auto-enable game mode when connected
-    LaunchedEffect(canShowDetailPage) {
-        if (canShowDetailPage && autoGameMode.value) {
-            delay(100)
-            setGameMode(true)
         }
     }
 
@@ -283,6 +287,55 @@ fun MainUI() {
                             "connecting" -> ConnectingPage()
                             "error" -> ErrorPage(onRetry = { appController.disconnect() })
                             else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
+                        }
+                    }
+                }
+
+                // Popup dialog for notification/hook clicks
+                SuperDialog(
+                    title = displayTitle.ifEmpty { stringResource(R.string.app_name) },
+                    show = showPopup,
+                    onDismissRequest = {
+                        showPopup.value = false
+                        onFinish()
+                    }
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            PodStatus(
+                                displayBattery,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            AncSwitch(displayAnc, onAncModeChange = { setAncMode(it) })
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            SuperSwitch(
+                                title = stringResource(R.string.game_mode),
+                                summary = stringResource(R.string.game_mode_summary),
+                                checked = displayGameMode,
+                                onCheckedChange = { setGameMode(it) }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            TextButton(
+                                text = stringResource(R.string.more),
+                                onClick = { showPopup.value = false }
+                            )
+                            TextButton(
+                                text = stringResource(R.string.done),
+                                onClick = {
+                                    showPopup.value = false
+                                    onFinish()
+                                }
+                            )
                         }
                     }
                 }

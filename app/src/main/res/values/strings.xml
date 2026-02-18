@@ -27,4 +27,6 @@
     <string name="retry">Retry</string>
     <string name="bt_permission_required">Bluetooth permission is required to discover earphones.</string>
     <string name="grant_permission">Grant Permission</string>
+    <string name="more">More</string>
+    <string name="done">Done</string>
 </resources>
