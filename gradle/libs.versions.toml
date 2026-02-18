@@ -9,6 +9,7 @@ kotlinxSerializationJson = "1.9.0"
 xposedApi = "82"
 yukihookApi = "1.3.1"
 miuix = "0.8.3"
+navigation3 = "1.0.0-rc01"
 
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
@@ -35,3 +36,5 @@ compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview"
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 miuix = { group = "top.yukonga.miuix.kmp", name = "miuix-android", version.ref = "miuix" }
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }
+miuix-navigation3-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-navigation3-ui-android", version.ref = "miuix" }
+navigation3-runtime = { group = "androidx.navigation3", name = "navigation3-runtime", version.ref = "navigation3" }

@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -16,11 +15,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +27,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,10 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
+import androidx.navigation3.ui.NavDisplay
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
@@ -65,20 +63,24 @@ import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+sealed interface Screen : NavKey {
+    data object Home : Screen
+    data object About : Screen
+}
+
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainUI() {
     val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-    // IconButton is 40dp with icon centered, so ~8dp internal padding per side
-    val edgePadding = maxOf((LocalConfiguration.current.screenWidthDp * 0.1f - 8f), 0f).dp
 
-    var currentPage by remember { mutableStateOf("main") }
+    val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val currentScreen = backStack.last()
     val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
-    val currentTitle = when (currentPage) {
-        "about" -> stringResource(R.string.about)
-        else -> mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
+    val currentTitle = when (currentScreen) {
+        Screen.About -> stringResource(R.string.about)
+        Screen.Home -> mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
     }
 
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
@@ -197,27 +199,22 @@ fun MainUI() {
         }
     }
 
-    BackHandler(enabled = currentPage == "about") {
-        currentPage = "main"
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = currentTitle,
-                largeTitle = if (currentPage == "main") currentTitle else null,
+                largeTitle = if (currentScreen == Screen.Home) currentTitle else null,
                 scrollBehavior = topAppBarScrollBehavior,
-                horizontalPadding = 0.dp,
+                horizontalPadding = 20.dp,
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            if (currentPage == "about") {
-                                currentPage = "main"
+                            if (backStack.size > 1) {
+                                backStack.removeLast()
                             } else {
                                 (context as? Activity)?.finish()
                             }
-                        },
-                        modifier = Modifier.padding(start = edgePadding)
+                        }
                     ) {
                         Icon(
                             imageVector = MiuixIcons.Back,
@@ -226,7 +223,7 @@ fun MainUI() {
                     }
                 },
                 actions = {
-                    if (currentPage == "main" && canShowDetailPage) {
+                    if (currentScreen == Screen.Home && canShowDetailPage) {
                         IconButton(onClick = { refreshStatus() }) {
                             Icon(
                                 imageVector = MiuixIcons.Refresh,
@@ -234,10 +231,9 @@ fun MainUI() {
                             )
                         }
                     }
-                    if (currentPage == "main") {
+                    if (currentScreen == Screen.Home) {
                         IconButton(
-                            onClick = { currentPage = "about" },
-                            modifier = Modifier.padding(end = edgePadding)
+                            onClick = { backStack.add(Screen.About) }
                         ) {
                             Icon(
                                 imageVector = MiuixIcons.Info,
@@ -249,45 +245,53 @@ fun MainUI() {
             )
         }
     ) { padding ->
-        AnimatedContent(
-            targetState = currentPage,
-            transitionSpec = {
-                if (targetState == "about") {
-                    slideInHorizontally { it } + fadeIn() togetherWith
-                            slideOutHorizontally { -it / 3 } + fadeOut()
-                } else {
-                    slideInHorizontally { -it / 3 } + fadeIn() togetherWith
-                            slideOutHorizontally { it } + fadeOut()
-                }
-            },
-            label = "PageTransition"
-        ) { page ->
-            when (page) {
-                "about" -> AboutPage(modifier = Modifier.padding(padding))
-                else -> AnimatedContent(
-                    targetState = when {
-                        canShowDetailPage -> "detail"
-                        isConnecting -> "connecting"
-                        isError -> "error"
-                        else -> "picker"
-                    },
-                    label = "MainPageAnim"
-                ) { state ->
-                    Box(modifier = Modifier.padding(padding)) {
-                        when (state) {
-                            "detail" -> PodDetailPage(
-                                batteryParams = displayBattery,
-                                ancMode = displayAnc,
-                                onAncModeChange = { setAncMode(it) }
-                            )
-                            "connecting" -> ConnectingPage()
-                            "error" -> ErrorPage(onRetry = { appController.disconnect() })
-                            else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
+        val entryProvider = remember(backStack) {
+            entryProvider<Screen> {
+                entry<Screen.Home> {
+                    AnimatedContent(
+                        targetState = when {
+                            canShowDetailPage -> "detail"
+                            isConnecting -> "connecting"
+                            isError -> "error"
+                            else -> "picker"
+                        },
+                        label = "MainPageAnim"
+                    ) { state ->
+                        Box(modifier = Modifier.padding(padding)) {
+                            when (state) {
+                                "detail" -> PodDetailPage(
+                                    batteryParams = displayBattery,
+                                    ancMode = displayAnc,
+                                    onAncModeChange = { setAncMode(it) }
+                                )
+                                "connecting" -> ConnectingPage()
+                                "error" -> ErrorPage(onRetry = { appController.disconnect() })
+                                else -> DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) })
+                            }
                         }
                     }
                 }
+                entry<Screen.About> {
+                    AboutPage(modifier = Modifier.padding(padding))
+                }
             }
         }
+
+        val entries = rememberDecoratedNavEntries(
+            backStack = backStack,
+            entryProvider = entryProvider
+        )
+
+        NavDisplay(
+            entries = entries,
+            onBack = {
+                if (backStack.size > 1) {
+                    backStack.removeLast()
+                } else {
+                    (context as? Activity)?.finish()
+                }
+            }
+        )
     }
 }
 
