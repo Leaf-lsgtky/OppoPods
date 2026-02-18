@@ -73,8 +73,8 @@ fun MainUI() {
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
-    // Debug: adjustable TopAppBar padding
-    val debugPadding = remember { mutableStateOf(26f) }
+    // Debug: adjustable extra padding for TopAppBar icon buttons
+    val debugPadding = remember { mutableStateOf(0f) }
 
     val mainTitle = remember { mutableStateOf("") }
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
@@ -204,10 +204,10 @@ fun MainUI() {
                         title = homeTitle,
                         largeTitle = homeTitle,
                         scrollBehavior = topAppBarScrollBehavior,
-                        horizontalPadding = debugPadding.value.dp,
                         navigationIcon = {
                             IconButton(
-                                onClick = { (context as? Activity)?.finish() }
+                                onClick = { (context as? Activity)?.finish() },
+                                modifier = Modifier.padding(start = debugPadding.value.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Back,
@@ -225,7 +225,8 @@ fun MainUI() {
                                 }
                             }
                             IconButton(
-                                onClick = { backStack.add(Screen.About) }
+                                onClick = { backStack.add(Screen.About) },
+                                modifier = Modifier.padding(end = debugPadding.value.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Info,
@@ -265,10 +266,10 @@ fun MainUI() {
                 topBar = {
                     TopAppBar(
                         title = stringResource(R.string.about),
-                        horizontalPadding = debugPadding.value.dp,
                         navigationIcon = {
                             IconButton(
-                                onClick = { backStack.removeLast() }
+                                onClick = { backStack.removeLast() },
+                                modifier = Modifier.padding(start = debugPadding.value.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Back,

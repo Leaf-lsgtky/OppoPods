@@ -35,7 +35,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun AboutPage(
     modifier: Modifier = Modifier,
-    debugPadding: MutableState<Float> = mutableStateOf(26f)
+    debugPadding: MutableState<Float> = mutableStateOf(0f)
 ) {
     val context = LocalContext.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
@@ -91,13 +91,12 @@ fun AboutPage(
                 )
             }
 
-            // Debug: TopAppBar padding adjustment
+            // Debug: IconButton extra padding
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 BasicComponent(
-                    title = "Debug: horizontalPadding",
-                    summary = "%.0f dp  |  %.1f%% of %ddp screen width".format(
+                    title = "Debug: Icon extra padding",
+                    summary = "%.0f dp  |  screen width = %d dp".format(
                         debugPadding.value,
-                        debugPadding.value / screenWidthDp * 100,
                         screenWidthDp
                     )
                 )
@@ -141,28 +140,28 @@ fun AboutPage(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     TextButton(
-                        text = "16",
-                        onClick = { debugPadding.value = 16f }
+                        text = "0 (none)",
+                        onClick = { debugPadding.value = 0f }
                     )
                     TextButton(
-                        text = "20",
-                        onClick = { debugPadding.value = 20f }
+                        text = "4",
+                        onClick = { debugPadding.value = 4f }
                     )
                     TextButton(
-                        text = "26 (default)",
-                        onClick = { debugPadding.value = 26f }
+                        text = "8",
+                        onClick = { debugPadding.value = 8f }
                     )
                     TextButton(
-                        text = "32",
-                        onClick = { debugPadding.value = 32f }
+                        text = "12",
+                        onClick = { debugPadding.value = 12f }
                     )
                 }
                 BasicComponent(
-                    title = "Icon first pixel from edge",
-                    summary = "~%.0f dp (padding %.0f + IconButton internal ~8dp)  |  ~%.1f%%".format(
-                        debugPadding.value + 8f,
+                    title = "Icon edge distance (estimated)",
+                    summary = "TopAppBar default ~26dp + extra %.0fdp + IconButton ~8dp = ~%.0fdp  |  ~%.1f%%".format(
                         debugPadding.value,
-                        (debugPadding.value + 8f) / screenWidthDp * 100
+                        26f + debugPadding.value + 8f,
+                        (26f + debugPadding.value + 8f) / screenWidthDp * 100
                     )
                 )
             }
