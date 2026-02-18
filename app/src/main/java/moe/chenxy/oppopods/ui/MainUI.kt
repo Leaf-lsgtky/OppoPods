@@ -73,6 +73,9 @@ fun MainUI() {
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
+    // Debug: adjustable TopAppBar padding
+    val debugPadding = remember { mutableStateOf(26f) }
+
     val mainTitle = remember { mutableStateOf("") }
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
@@ -201,6 +204,7 @@ fun MainUI() {
                         title = homeTitle,
                         largeTitle = homeTitle,
                         scrollBehavior = topAppBarScrollBehavior,
+                        horizontalPadding = debugPadding.value.dp,
                         navigationIcon = {
                             IconButton(
                                 onClick = { (context as? Activity)?.finish() }
@@ -261,6 +265,7 @@ fun MainUI() {
                 topBar = {
                     TopAppBar(
                         title = stringResource(R.string.about),
+                        horizontalPadding = debugPadding.value.dp,
                         navigationIcon = {
                             IconButton(
                                 onClick = { backStack.removeLast() }
@@ -274,7 +279,7 @@ fun MainUI() {
                     )
                 }
             ) { padding ->
-                AboutPage(modifier = Modifier.padding(padding))
+                AboutPage(modifier = Modifier.padding(padding), debugPadding = debugPadding)
             }
         }
     }
