@@ -4,7 +4,11 @@
     <string name="app_subtitle">OPPO 耳机适配 HyperOS</string>
     <string name="pod_info">耳机信息</string>
     <string name="about">关于 OppoPods</string>
+    <string name="settings">设置</string>
     <string name="based_on">基于</string>
+    <string name="game_mode">游戏模式</string>
+    <string name="game_mode_summary">低延迟音频模式</string>
+    <string name="auto_game_mode">连接时自动开启游戏模式</string>
     <string name="off">关闭</string>
     <string name="noise_cancellation_title">降噪</string>
     <string name="transparency_title">通透</string>
