@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -211,6 +212,7 @@ fun MainUI() {
     // Auto-enable game mode when connected
     LaunchedEffect(canShowDetailPage) {
         if (canShowDetailPage && autoGameMode.value) {
+            delay(100)
             setGameMode(true)
         }
     }
