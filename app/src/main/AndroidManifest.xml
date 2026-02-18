@@ -24,6 +24,7 @@
         </activity>
         <activity android:name=".PopupActivity"
             android:theme="@style/Theme.OppoPods.Popup"
+            android:taskAffinity=""
             android:excludeFromRecents="true"
             android:exported="true">
             <intent-filter>

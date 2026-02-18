@@ -35,6 +35,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class PopupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -129,7 +130,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }
     }
 
-    val dialogBgColor = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFFF7F7F7)
+    val dialogBgColor = if (isDarkMode) MiuixTheme.colorScheme.surfaceVariant else Color(0xFFF7F7F7)
 
     Scaffold(containerColor = Color.Transparent) { _ ->
         SuperDialog(
