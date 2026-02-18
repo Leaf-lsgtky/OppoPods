@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MainUI() {
     val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val topBarHorizontalPadding = (screenWidthDp * 0.1f).dp
 
     var currentPage by remember { mutableStateOf("main") }
     val context = LocalContext.current
@@ -204,6 +207,7 @@ fun MainUI() {
                 title = currentTitle,
                 largeTitle = if (currentPage == "main") currentTitle else null,
                 scrollBehavior = topAppBarScrollBehavior,
+                horizontalPadding = topBarHorizontalPadding,
                 navigationIcon = {
                     IconButton(onClick = {
                         if (currentPage == "about") {

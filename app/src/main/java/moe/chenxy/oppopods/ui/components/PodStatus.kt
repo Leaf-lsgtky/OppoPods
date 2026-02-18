@@ -78,38 +78,51 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
     val displayLevel = if (isConnected) "$level%" else "-"
     val iconLevel = if (isConnected) level else lastKnownLevel
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = modifier.padding(vertical = 4.dp)
+    // Pad short labels (左/右) to match width of longest label (耳机盒) using ideographic spaces
+    val paddedLabel = if (label.length < 3) label.padEnd(3, '\u3000') else label
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = displayLevel,
-            fontSize = 13.sp,
-            color = Color.Gray
-        )
-        Image(
-            painter = painterResource(
-                getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)
-            ),
-            contentDescription = "$label $displayLevel",
-            modifier = Modifier.size(24.dp)
-        )
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
+            Text(
+                text = paddedLabel,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = displayLevel,
+                fontSize = 13.sp,
+                color = Color.Gray
+            )
+            Image(
+                painter = painterResource(
+                    getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)
+                ),
+                contentDescription = "$label $displayLevel",
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
 private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
     val index = when {
-        level <= 20 -> 1
-        level <= 40 -> 2
-        level <= 60 -> 3
-        level <= 80 -> 4
-        else -> 5
+        level <= 10 -> 1
+        level <= 20 -> 2
+        level <= 30 -> 3
+        level <= 40 -> 4
+        level <= 50 -> 5
+        level <= 60 -> 6
+        level <= 70 -> 7
+        level <= 80 -> 8
+        level <= 90 -> 9
+        else -> 10
     }
     return if (isCharging) {
         when (index) {
@@ -117,7 +130,12 @@ private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
             2 -> R.drawable.charge_2
             3 -> R.drawable.charge_3
             4 -> R.drawable.charge_4
-            else -> R.drawable.charge_5
+            5 -> R.drawable.charge_5
+            6 -> R.drawable.charge_6
+            7 -> R.drawable.charge_7
+            8 -> R.drawable.charge_8
+            9 -> R.drawable.charge_9
+            else -> R.drawable.charge_10
         }
     } else {
         when (index) {
@@ -125,7 +143,12 @@ private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
             2 -> R.drawable.common_2
             3 -> R.drawable.common_3
             4 -> R.drawable.common_4
-            else -> R.drawable.common_5
+            5 -> R.drawable.common_5
+            6 -> R.drawable.common_6
+            7 -> R.drawable.common_7
+            8 -> R.drawable.common_8
+            9 -> R.drawable.common_9
+            else -> R.drawable.common_10
         }
     }
 }
