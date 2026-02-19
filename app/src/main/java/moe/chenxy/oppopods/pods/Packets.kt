@@ -10,7 +10,7 @@ package moe.chenxy.oppopods.pods
 object OppoPackets {
 
     /** Build a complete OPPO protocol packet. */
-    fun buildPacket(cmd: Int, seq: Int = 0, payload: ByteArray = byteArrayOf()): ByteArray {
+    fun buildPacket(cmd: Int, seq: Int = 0xF0, payload: ByteArray = byteArrayOf()): ByteArray {
         val payLen = payload.size
         // TotalLen = 7 (header fields after TotalLen: Res(2) + Cmd(2) + Seq(1) + PayLen(2)) + payLen
         val totalLen = 7 + payLen
@@ -83,9 +83,9 @@ object Enums {
         cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.OFF.toByte())
     )
 
-    /** Query battery: AA 07 00 00 06 01 00 00 00 */
+    /** Query battery: AA 07 00 00 06 01 F0 00 00 */
     val QUERY_BATTERY: ByteArray = byteArrayOf(
-        0xAA.toByte(), 0x07, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00
+        0xAA.toByte(), 0x07, 0x00, 0x00, 0x06, 0x01, 0xF0.toByte(), 0x00, 0x00
     )
 
     /** Query ANC mode: AA 09 00 00 0C 01 00 02 00 01 01 */

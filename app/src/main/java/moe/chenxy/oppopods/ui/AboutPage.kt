@@ -21,7 +21,9 @@ import top.yukonga.miuix.kmp.extra.SuperSwitch
 fun SettingsPage(
     modifier: Modifier = Modifier,
     autoGameMode: MutableState<Boolean> = mutableStateOf(false),
-    onAutoGameModeChange: (Boolean) -> Unit = {}
+    onAutoGameModeChange: (Boolean) -> Unit = {},
+    openHeyTap: MutableState<Boolean> = mutableStateOf(false),
+    onOpenHeyTapChange: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -34,6 +36,12 @@ fun SettingsPage(
                     title = stringResource(R.string.auto_game_mode),
                     checked = autoGameMode.value,
                     onCheckedChange = { onAutoGameModeChange(it) }
+                )
+                SuperSwitch(
+                    title = stringResource(R.string.open_heytap),
+                    summary = stringResource(R.string.open_heytap_summary),
+                    checked = openHeyTap.value,
+                    onCheckedChange = { onOpenHeyTapChange(it) }
                 )
             }
         }

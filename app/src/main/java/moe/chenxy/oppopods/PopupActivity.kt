@@ -44,7 +44,15 @@ class PopupActivity : ComponentActivity() {
             AppTheme {
                 PopupContent(
                     onMore = {
-                        startActivity(Intent(this@PopupActivity, MainActivity::class.java))
+                        val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+                        if (prefs.getBoolean("open_heytap", false)) {
+                            val intent = packageManager.getLaunchIntentForPackage("com.heytap.headset")
+                            if (intent != null) {
+                                startActivity(intent)
+                            }
+                        } else {
+                            startActivity(Intent(this@PopupActivity, MainActivity::class.java))
+                        }
                         finish()
                     },
                     onDone = { finish() }

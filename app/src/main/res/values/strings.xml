@@ -8,6 +8,8 @@
     <string name="game_mode">Game Mode</string>
     <string name="game_mode_summary">Low latency audio mode</string>
     <string name="auto_game_mode">Auto-enable game mode on connect</string>
+    <string name="open_heytap">Open HeyTap Headset on \"More\"</string>
+    <string name="open_heytap_summary">Launch HeyTap Headset instead of main page when tapping \"More\"</string>
     <string name="off">Off</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>

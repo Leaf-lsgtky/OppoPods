@@ -9,6 +9,8 @@
     <string name="game_mode">游戏模式</string>
     <string name="game_mode_summary">低延迟音频模式</string>
     <string name="auto_game_mode">连接时自动开启游戏模式</string>
+    <string name="open_heytap">点击更多时打开欢律</string>
+    <string name="open_heytap_summary">点击弹窗的更多按钮时跳转至欢律而非打开主页面</string>
     <string name="off">关闭</string>
     <string name="noise_cancellation_title">降噪</string>
     <string name="transparency_title">通透</string>

@@ -82,6 +82,7 @@ fun MainUI() {
     // Auto game mode preference (persisted)
     val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
     val autoGameMode = remember { mutableStateOf(prefs.getBoolean("auto_game_mode", false)) }
+    val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
 
     val appController = remember { AppRfcommController() }
     val appConnState by appController.connectionState.collectAsState()
@@ -304,6 +305,11 @@ fun MainUI() {
                     onAutoGameModeChange = {
                         autoGameMode.value = it
                         prefs.edit().putBoolean("auto_game_mode", it).apply()
+                    },
+                    openHeyTap = openHeyTap,
+                    onOpenHeyTapChange = {
+                        openHeyTap.value = it
+                        prefs.edit().putBoolean("open_heytap", it).apply()
                     }
                 )
             }
