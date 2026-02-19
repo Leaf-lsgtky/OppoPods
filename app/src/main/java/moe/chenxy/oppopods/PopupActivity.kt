@@ -49,6 +49,8 @@ class PopupActivity : ComponentActivity() {
                             val intent = packageManager.getLaunchIntentForPackage("com.heytap.headset")
                             if (intent != null) {
                                 startActivity(intent)
+                            } else {
+                                startActivity(Intent(this@PopupActivity, MainActivity::class.java))
                             }
                         } else {
                             startActivity(Intent(this@PopupActivity, MainActivity::class.java))
@@ -94,7 +96,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                         deviceName.value = p1.getStringExtra("device_name") ?: ""
                     }
                     OppoPodsAction.ACTION_PODS_DISCONNECTED -> {
-                        onDone()
+                        showDialog.value = false
                     }
                 }
             }
