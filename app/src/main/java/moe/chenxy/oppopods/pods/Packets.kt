@@ -126,7 +126,7 @@ object BatteryParser {
     )
 
     /**
-     * Parse a raw packet buffer for battery response.
+     * Parse a raw packet buffer for battery response (query response, Cmd=0x8106).
      * Returns null if the packet is not a valid battery response.
      */
     fun parse(data: ByteArray): BatteryResult? {
@@ -168,6 +168,60 @@ object BatteryParser {
 
         return BatteryResult(left, right, case)
     }
+
+    /**
+     * Parse an active/unsolicited battery report (Cmd=0x0204, payload type=0x01).
+     *
+     * Active report format:
+     * Payload[0] = 0x01 (report type: battery)
+     * Payload[1] = count (number of index-value pairs)
+     * Payload[2..] = [Index(1B), StatusValue(1B)] * count
+     *
+     * Returns null if the packet is not a valid active battery report.
+     */
+    fun parseActiveReport(data: ByteArray): BatteryResult? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+        if (cmd != Cmd.ANC_MODE_NOTIFY) return null // 0x0204 = active status report
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+        if (data.size < payloadStart + payLen) return null
+        if (payLen < 2) return null
+
+        // Check report type = 0x01 (battery)
+        val reportType = data[payloadStart].toInt() and 0xFF
+        if (reportType != 0x01) return null
+
+        val count = data[payloadStart + 1].toInt() and 0xFF
+        if (payLen < 2 + count * 2) return null
+
+        var left: BatteryInfo? = null
+        var right: BatteryInfo? = null
+        var case: BatteryInfo? = null
+
+        for (j in 0 until count) {
+            val idx = payloadStart + 2 + j * 2
+            if (idx + 1 >= data.size) break
+            val index = data[idx].toInt() and 0xFF
+            val rawValue = data[idx + 1].toInt() and 0xFF
+            val level = rawValue and 0x7F
+            val charging = (rawValue and 0x80) != 0
+            val info = BatteryInfo(level, charging)
+
+            when (index) {
+                BatteryComponent.LEFT -> left = info
+                BatteryComponent.RIGHT -> right = info
+                BatteryComponent.CASE -> case = info
+            }
+        }
+
+        return BatteryResult(left, right, case)
+    }
 }
 
 /**
@@ -193,6 +247,12 @@ object AncModeParser {
         val payloadStart = 9
 
         if (data.size < payloadStart + payLen) return null
+
+        // For 0x0204, skip if this is a battery report (type=0x01) or button report (type=0x02)
+        if (cmd == Cmd.ANC_MODE_NOTIFY && payLen > 0) {
+            val reportType = data[payloadStart].toInt() and 0xFF
+            if (reportType == 0x01 || reportType == 0x02) return null
+        }
 
         // Scan for pattern: 01 01 [Val]
         for (i in payloadStart until minOf(payloadStart + payLen - 2, data.size - 2)) {

@@ -64,16 +64,18 @@ object MiuiStrongToastUtil {
     ) {
         if (!isHyperOS) return
 
-        val left = batteryParams.left!!.battery
-        val leftCharging = batteryParams.left!!.isCharging
-        val right = batteryParams.right!!.battery
-        val rightCharging = batteryParams.right!!.isCharging
+        val leftConnected = batteryParams.left?.isConnected == true
+        val rightConnected = batteryParams.right?.isConnected == true
+        val left = batteryParams.left?.battery ?: 0
+        val leftCharging = batteryParams.left?.isCharging == true
+        val right = batteryParams.right?.battery ?: 0
+        val rightCharging = batteryParams.right?.isCharging == true
 
         val leftText =
-            TextParams(if (batteryParams.left!!.isConnected) "$left %" else "", if (leftCharging) Color.GREEN else if (left <= lowBatteryThreshold) Color.RED else Color.WHITE)
+            TextParams(if (leftConnected) "$left %" else "", if (leftCharging) Color.GREEN else if (left <= lowBatteryThreshold) Color.RED else Color.WHITE)
         val leftVideo = IconParams(Category.RAW, FileType.MP4, leftVideoUri.toString(), 1)
         val rightText =
-            TextParams(if (batteryParams.right!!.isConnected) "$right %" else "", if (rightCharging) Color.GREEN else if (right <= lowBatteryThreshold) Color.RED else Color.WHITE)
+            TextParams(if (rightConnected) "$right %" else "", if (rightCharging) Color.GREEN else if (right <= lowBatteryThreshold) Color.RED else Color.WHITE)
         val rightVideo = IconParams(Category.RAW, FileType.MP4, rightVideoUri.toString(), 1)
         val l = Left(textParams = leftText, iconParams = leftVideo)
         val r = Right(textParams = rightText, iconParams = rightVideo)

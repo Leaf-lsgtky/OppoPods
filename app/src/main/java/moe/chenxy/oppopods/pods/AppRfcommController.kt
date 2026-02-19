@@ -150,6 +150,31 @@ class AppRfcommController {
             return
         }
 
+        // Try parse as active battery report (unsolicited, Cmd=0x0204, type=0x01)
+        val activeResult = BatteryParser.parseActiveReport(packet)
+        if (activeResult != null) {
+            val left = PodParams(
+                activeResult.left?.level ?: 0,
+                activeResult.left?.isCharging == true,
+                activeResult.left != null,
+                0
+            )
+            val right = PodParams(
+                activeResult.right?.level ?: 0,
+                activeResult.right?.isCharging == true,
+                activeResult.right != null,
+                0
+            )
+            val case = PodParams(
+                activeResult.case?.level ?: 0,
+                activeResult.case?.isCharging == true,
+                activeResult.case != null,
+                0
+            )
+            _batteryParams.value = BatteryParams(left, right, case)
+            return
+        }
+
         val ancResult = AncModeParser.parse(packet)
         if (ancResult != null) {
             Log.d(TAG, "ANC mode received: $ancResult")

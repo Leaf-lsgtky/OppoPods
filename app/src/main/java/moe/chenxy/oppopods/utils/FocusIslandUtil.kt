@@ -27,8 +27,14 @@ object FocusIslandUtil {
 
     fun showBatteryIsland(context: Context, batteryParams: BatteryParams): Boolean {
         try {
-            val leftBatt = batteryParams.left?.battery ?: 0
-            val rightBatt = batteryParams.right?.battery ?: 0
+            val leftConnected = batteryParams.left?.isConnected == true
+            val rightConnected = batteryParams.right?.isConnected == true
+
+            // Need at least one ear connected
+            if (!leftConnected && !rightConnected) return false
+
+            val leftText = if (leftConnected) "${batteryParams.left!!.battery}" else "-"
+            val rightText = if (rightConnected) "${batteryParams.right!!.battery}" else "-"
 
             // 从模块 APK 加载耳机图片为 Bitmap，避免跨包资源引用问题
             val moduleContext = context.createPackageContext(
@@ -46,7 +52,7 @@ object FocusIslandUtil {
             val leftIcon = Icon.createWithBitmap(leftBitmap)
             val rightIcon = Icon.createWithBitmap(rightBitmap)
 
-            val json = buildIslandJson(leftBatt, rightBatt)
+            val json = buildIslandJson(leftText, rightText)
 
             val picsBundle = Bundle().apply {
                 putParcelable("miui.focus.pic_left", leftIcon)
@@ -63,10 +69,14 @@ object FocusIslandUtil {
                 }
             )
 
+            val contentParts = mutableListOf<String>()
+            if (leftConnected) contentParts.add("L: ${batteryParams.left!!.battery}%")
+            if (rightConnected) contentParts.add("R: ${batteryParams.right!!.battery}%")
+
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .setContentTitle("OppoPods")
-                .setContentText("L: $leftBatt%  R: $rightBatt%")
+                .setContentText(contentParts.joinToString("  "))
                 .addExtras(Bundle().apply {
                     putString("miui.focus.param", json)
                     putBundle("miui.focus.pics", picsBundle)
@@ -79,7 +89,7 @@ object FocusIslandUtil {
                 try { nm.cancel(NOTIFICATION_ID) } catch (_: Exception) {}
             }, DISMISS_DELAY_MS)
 
-            Log.d(TAG, "Focus Island shown: L=$leftBatt% R=$rightBatt%")
+            Log.d(TAG, "Focus Island shown: L=$leftText% R=$rightText%")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show Focus Island", e)
@@ -87,7 +97,7 @@ object FocusIslandUtil {
         }
     }
 
-    private fun buildIslandJson(leftBatt: Int, rightBatt: Int): String {
+    private fun buildIslandJson(leftText: String, rightText: String): String {
         return JSONObject().apply {
             put("param_v2", JSONObject().apply {
                 put("protocol", 3)
@@ -106,7 +116,7 @@ object FocusIslandUtil {
                                 put("pic", "miui.focus.pic_left")
                             })
                             put("textInfo", JSONObject().apply {
-                                put("title", "$leftBatt")
+                                put("title", leftText)
                                 put("content", "%")
                             })
                         })
@@ -117,7 +127,7 @@ object FocusIslandUtil {
                                 put("pic", "miui.focus.pic_right")
                             })
                             put("textInfo", JSONObject().apply {
-                                put("title", "$rightBatt")
+                                put("title", rightText)
                                 put("content", "%")
                             })
                         })

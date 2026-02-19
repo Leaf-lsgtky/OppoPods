@@ -151,8 +151,11 @@ object RfcommController {
         }
 
         val shouldShowToast = !mShowedConnectedToast
-        if (shouldShowToast && (left.battery <= 0 || right.battery <= 0)) {
-            return
+        if (shouldShowToast) {
+            // Wait until at least one connected ear has valid battery data
+            val hasValidData = (left.isConnected && left.battery > 0) ||
+                    (right.isConnected && right.battery > 0)
+            if (!hasValidData) return
         }
 
         val batteryParams = BatteryParams(left, right, case)
@@ -298,10 +301,17 @@ object RfcommController {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
 
-        // Try parse as battery response
+        // Try parse as battery response (query response, Cmd=0x8106)
         val batteryResult = BatteryParser.parse(packet)
         if (batteryResult != null) {
             handleBatteryChanged(batteryResult)
+            return
+        }
+
+        // Try parse as active battery report (unsolicited, Cmd=0x0204, type=0x01)
+        val activeResult = BatteryParser.parseActiveReport(packet)
+        if (activeResult != null) {
+            handleBatteryChanged(activeResult)
             return
         }
 
