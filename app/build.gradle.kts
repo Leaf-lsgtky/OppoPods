@@ -24,8 +24,8 @@ android {
         applicationId = "moe.chenxy.oppopods"
         minSdk = 35
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0-OppoPods-HyperOS"
+        versionCode = 2
+        versionName = "1.0.1-OppoPods-HyperOS"
     }
 
     buildTypes {

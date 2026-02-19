@@ -3,18 +3,23 @@ package moe.chenxy.oppopods.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import moe.chenxy.oppopods.R
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 
 @Composable
@@ -26,6 +31,7 @@ fun SettingsPage(
     onOpenHeyTapChange: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val showHeyTapWarning = remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(12.dp),
@@ -41,7 +47,13 @@ fun SettingsPage(
                     title = stringResource(R.string.open_heytap),
                     summary = stringResource(R.string.open_heytap_summary),
                     checked = openHeyTap.value,
-                    onCheckedChange = { onOpenHeyTapChange(it) }
+                    onCheckedChange = {
+                        if (it) {
+                            showHeyTapWarning.value = true
+                        } else {
+                            onOpenHeyTapChange(false)
+                        }
+                    }
                 )
             }
         }
@@ -74,5 +86,24 @@ fun SettingsPage(
                 )
             }
         }
+    }
+
+    SuperDialog(
+        title = stringResource(R.string.heytap_warning_title),
+        summary = stringResource(R.string.heytap_warning),
+        show = showHeyTapWarning,
+        onDismissRequest = {
+            showHeyTapWarning.value = false
+        }
+    ) {
+        TextButton(
+            text = stringResource(R.string.confirm),
+            onClick = {
+                showHeyTapWarning.value = false
+                onOpenHeyTapChange(true)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.textButtonColorsPrimary()
+        )
     }
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OppoPods</string>
+    <string name="app_name">OPPOPods</string>
     <string name="app_subtitle">OPPO 耳机适配 HyperOS</string>
     <string name="pod_info">耳机信息</string>
     <string name="about">关于 OppoPods</string>
@@ -32,4 +32,7 @@
     <string name="grant_permission">授予权限</string>
     <string name="more">更多</string>
     <string name="done">完成</string>
+    <string name="confirm">确认</string>
+    <string name="heytap_warning">由于我也不知道的原因，在连接欢律后将无法正常使用本模块，手动放回盒子里重新连接即可恢复。</string>
+    <string name="heytap_warning_title">注意</string>
 </resources>
