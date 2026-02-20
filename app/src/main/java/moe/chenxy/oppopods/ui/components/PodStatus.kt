@@ -1,7 +1,10 @@
 package moe.chenxy.oppopods.ui.components
 
+import android.content.res.Configuration
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +39,8 @@ import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
 fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
+    val dividerColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
+
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -44,7 +54,7 @@ fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .width(0.5.dp)
                 .height(56.dp)
-                .background(Color(0xFFEEEEEE))
+                .background(dividerColor)
         )
         BatteryColumn(
             label = stringResource(R.string.batt_right_pod),
@@ -55,7 +65,7 @@ fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .width(0.5.dp)
                 .height(56.dp)
-                .background(Color(0xFFEEEEEE))
+                .background(dividerColor)
         )
         BatteryColumn(
             label = stringResource(R.string.pod_case),
@@ -101,7 +111,7 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
                 color = Color.Gray
             )
             Image(
-                painter = painterResource(
+                painter = themedPainterResource(
                     getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)
                 ),
                 contentDescription = "$label $displayLevel",
@@ -149,6 +159,36 @@ private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
             8 -> R.drawable.common_8
             9 -> R.drawable.common_9
             else -> R.drawable.common_10
+        }
+    }
+}
+
+/**
+ * Loads a drawable resource respecting the app's theme override.
+ * When the app theme differs from the system night mode, creates a configuration context
+ * with the correct night mode to load the appropriate drawable variant (e.g. drawable-night-nodpi).
+ */
+@Composable
+private fun themedPainterResource(@androidx.annotation.DrawableRes id: Int): Painter {
+    val context = LocalContext.current
+    val themeConfig = LocalConfiguration.current
+    val sysNightMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+    val themeNightMode = themeConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+    return if (sysNightMode == themeNightMode) {
+        painterResource(id)
+    } else {
+        val themedResources = remember(context, themeNightMode) {
+            context.createConfigurationContext(
+                Configuration(context.resources.configuration).apply {
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or themeNightMode
+                }
+            ).resources
+        }
+        remember(id, themeNightMode) {
+            BitmapPainter(
+                (themedResources.getDrawable(id, null) as BitmapDrawable).bitmap.asImageBitmap()
+            )
         }
     }
 }
