@@ -60,6 +60,7 @@ object RfcommController {
     private var lastTempBatt = 0
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
+    private var currentGameMode: Boolean = false
 
     // Polling job
     private var batteryPollJob: kotlinx.coroutines.Job? = null
@@ -99,6 +100,15 @@ object RfcommController {
         }
     }
 
+    private fun changeUIGameModeStatus(enabled: Boolean) {
+        Intent(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED).apply {
+            this.putExtra("enabled", enabled)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+    }
+
     fun handleUIEvent(intent: Intent) {
         when (intent.action) {
             OppoPodsAction.ACTION_PODS_UI_INIT -> {
@@ -106,6 +116,7 @@ object RfcommController {
                 if (::currentBatteryParams.isInitialized)
                     changeUIBatteryStatus(currentBatteryParams)
                 changeUIAncStatus(currentAnc)
+                changeUIGameModeStatus(currentGameMode)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name)
                     mContext!!.sendBroadcast(this)
@@ -328,6 +339,15 @@ object RfcommController {
             return
         }
 
+        // Try parse as batch query response for game mode (Cmd=0x810D)
+        val gameModeResult = GameModeParser.parse(packet)
+        if (gameModeResult != null) {
+            Log.d(TAG, "Game mode received: $gameModeResult")
+            currentGameMode = gameModeResult
+            changeUIGameModeStatus(gameModeResult)
+            return
+        }
+
         // Unknown packet - log in debug
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "Unknown OPPO packet: ${packet.toHexString(HexFormat.UpperCase)}")
@@ -368,6 +388,7 @@ object RfcommController {
 
     fun setGameMode(enabled: Boolean) {
         Log.d(TAG, "setGameMode: $enabled")
+        currentGameMode = enabled
         val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(packet)
@@ -394,10 +415,12 @@ object RfcommController {
     }
 
     /**
-     * Combo query strategy: send battery query (wake), wait 50ms, then mode query.
+     * Combo query strategy: send batch query (wake + game mode), then battery, then ANC.
      */
     fun queryStatus() {
         CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(Enums.QUERY_STATUS)
+            delay(50)
             sendPacketSafe(Enums.QUERY_BATTERY)
             delay(50)
             sendPacketSafe(Enums.QUERY_ANC)

@@ -181,6 +181,14 @@ class AppRfcommController {
             _ancMode.value = ancResult
             return
         }
+
+        // Try parse as batch query response for game mode (Cmd=0x810D)
+        val gameModeResult = GameModeParser.parse(packet)
+        if (gameModeResult != null) {
+            Log.d(TAG, "Game mode received: $gameModeResult")
+            _gameMode.value = gameModeResult
+            return
+        }
     }
 
     private fun sendPacket(packet: ByteArray) {
@@ -209,10 +217,12 @@ class AppRfcommController {
     }
 
     /**
-     * Combo query strategy: send battery query (wake), wait 50ms, then mode query.
+     * Combo query strategy: send batch query (wake + game mode), then battery, then ANC.
      */
     private fun queryStatus() {
         scope.launch {
+            sendPacket(Enums.QUERY_STATUS)
+            delay(50)
             sendPacket(Enums.QUERY_BATTERY)
             delay(50)
             sendPacket(Enums.QUERY_ANC)

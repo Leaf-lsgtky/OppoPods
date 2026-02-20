@@ -11,4 +11,5 @@ object OppoPodsAction {
     const val ACTION_PODS_MAC_RECEIVED = "chen.action.oppopods.get_pods_mac"
     const val ACTION_REFRESH_STATUS = "chen.action.oppopods.refresh_status"
     const val ACTION_GAME_MODE_SET = "chen.action.oppopods.game_mode_set"
+    const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
 }

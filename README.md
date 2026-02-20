@@ -47,9 +47,17 @@ AA [TotalLen] 00 00 [Cmd 2B LE] [Seq] [PayLen 2B LE] [Payload...]
 | Function | Cmd | Payload |
 |----------|-----|---------|
 | ANC Control | `0x0404` | `01 01 <mode>` — `01`=Off, `02`=NC, `04`=Transparency |
-| Game Mode | `0x0403` | `28 01`=On, `28 00`=Off |
+| Game Mode Set | `0x0403` | `28 01`=On, `28 00`=Off |
 | Battery Query | `0x0106` | (empty) |
 | Battery Response | `0x8106` | Pairs of `[Index, RawValue]` — battery=`val & 0x7F`, charging=`(val & 0x80) != 0` |
+| Active Battery Report | `0x0204` | `01 <count> [Index, StatusValue]...` — unsolicited, same value encoding as above |
+| Batch Status Query | `0x010D` | Fixed blob (see below), wakes earbuds, no prerequisite |
+| Batch Status Response | `0x810D` | Key-value stream; find byte `0x28`, next byte = game mode (`01`=On, `00`=Off) |
+
+**Batch Status Query (fixed hex):**
+```
+AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
+```
 
 ### Build
 
@@ -119,9 +127,17 @@ AA [总长度] 00 00 [命令 2字节小端] [序列号] [载荷长度 2字节小
 | 功能 | 命令 | 载荷 |
 |------|------|------|
 | 降噪控制 | `0x0404` | `01 01 <模式>` — `01`=关闭, `02`=降噪, `04`=通透 |
-| 游戏模式 | `0x0403` | `28 01`=开, `28 00`=关 |
+| 游戏模式设置 | `0x0403` | `28 01`=开, `28 00`=关 |
 | 电量查询 | `0x0106` | （空） |
 | 电量响应 | `0x8106` | `[索引, 原始值]` 对 — 电量=`val & 0x7F`，充电中=`(val & 0x80) != 0` |
+| 电量主动上报 | `0x0204` | `01 <数量> [索引, 状态值]...` — 耳机主动推送，编码同上 |
+| 批量状态查询 | `0x010D` | 固定数据包（见下），自带唤醒权重，无需前置指令 |
+| 批量状态响应 | `0x810D` | 键值流；查找字节 `0x28`，下一字节为游戏模式状态（`01`=开, `00`=关） |
+
+**批量状态查询（固定数据）：**
+```
+AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
+```
 
 ### 构建
 

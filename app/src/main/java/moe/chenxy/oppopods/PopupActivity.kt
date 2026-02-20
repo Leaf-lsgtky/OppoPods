@@ -98,6 +98,9 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     OppoPodsAction.ACTION_PODS_DISCONNECTED -> {
                         showDialog.value = false
                     }
+                    OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED -> {
+                        gameMode.value = p1.getBooleanExtra("enabled", false)
+                    }
                 }
             }
         }
@@ -109,6 +112,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
+            addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_UI_INIT))

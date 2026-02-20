@@ -64,6 +64,10 @@ object Cmd {
     const val ANC_MODE_RESPONSE = 0x810C
     /** ANC mode change notification */
     const val ANC_MODE_NOTIFY = 0x0204
+    /** Batch parameter query */
+    const val QUERY_STATUS = 0x010D
+    /** Batch parameter query response */
+    const val QUERY_STATUS_RESPONSE = 0x810D
 }
 
 /** Pre-built packets. */
@@ -101,6 +105,16 @@ object Enums {
     /** Disable game mode: AA 09 00 00 03 04 00 02 00 28 00 */
     val GAME_MODE_OFF: ByteArray = OppoPackets.buildPacket(
         cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(0x28, 0x00)
+    )
+
+    /**
+     * Batch parameter query (fixed hex blob).
+     * Cmd=0x010D, contains multiple param IDs including 0x28 (game mode).
+     * Has built-in wake weight, no need for preceding 0x0106.
+     */
+    val QUERY_STATUS: ByteArray = byteArrayOf(
+        0xAA.toByte(), 0x13, 0x00, 0x00, 0x0D, 0x01, 0x00, 0x0C, 0x00,
+        0x0B, 0x05, 0x04, 0x0B, 0x11, 0x13, 0x18, 0x06, 0x1B, 0x1C, 0x27, 0x28
     )
 }
 
@@ -263,6 +277,38 @@ object AncModeParser {
                     0x08 -> NoiseControlMode.OFF
                     else -> null
                 }
+            }
+        }
+        return null
+    }
+}
+
+/**
+ * Parser for game mode status from batch parameter query response (Cmd=0x810D).
+ *
+ * Scans payload for byte 0x28 (game mode param ID), reads next byte:
+ *   0x01 = enabled, 0x00 = disabled
+ */
+object GameModeParser {
+
+    fun parse(data: ByteArray): Boolean? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+        if (cmd != Cmd.QUERY_STATUS_RESPONSE) return null
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+
+        if (data.size < payloadStart + payLen) return null
+
+        // Scan payload for param ID 0x28
+        for (i in payloadStart until minOf(payloadStart + payLen - 1, data.size - 1)) {
+            if ((data[i].toInt() and 0xFF) == 0x28) {
+                return (data[i + 1].toInt() and 0xFF) == 0x01
             }
         }
         return null
