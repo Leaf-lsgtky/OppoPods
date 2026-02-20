@@ -20,11 +20,14 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.extra.SuperDialog
+import top.yukonga.miuix.kmp.extra.SuperDropdown
 import top.yukonga.miuix.kmp.extra.SuperSwitch
 
 @Composable
 fun SettingsPage(
     modifier: Modifier = Modifier,
+    themeMode: MutableState<Int> = mutableStateOf(0),
+    onThemeModeChange: (Int) -> Unit = {},
     autoGameMode: MutableState<Boolean> = mutableStateOf(false),
     onAutoGameModeChange: (Boolean) -> Unit = {},
     openHeyTap: MutableState<Boolean> = mutableStateOf(false),
@@ -32,12 +35,28 @@ fun SettingsPage(
 ) {
     val context = LocalContext.current
     val showHeyTapWarning = remember { mutableStateOf(false) }
+    val themeOptions = listOf(
+        stringResource(R.string.theme_follow_system),
+        stringResource(R.string.theme_light),
+        stringResource(R.string.theme_dark)
+    )
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(12.dp),
     ) {
         item {
             Card {
+                SuperDropdown(
+                    title = stringResource(R.string.theme_title),
+                    items = themeOptions,
+                    selectedIndex = themeMode.value,
+                    onSelectedIndexChange = { onThemeModeChange(it) }
+                )
+            }
+        }
+
+        item {
+            Card(modifier = Modifier.padding(top = 12.dp)) {
                 SuperSwitch(
                     title = stringResource(R.string.auto_game_mode),
                     checked = autoGameMode.value,

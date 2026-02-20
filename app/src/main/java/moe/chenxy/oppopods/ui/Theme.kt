@@ -7,8 +7,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
 @Composable
-fun AppTheme(content: @Composable () -> Unit) {
-    val controller = remember { ThemeController(ColorSchemeMode.System) }
+fun AppTheme(
+    colorSchemeMode: ColorSchemeMode = ColorSchemeMode.System,
+    content: @Composable () -> Unit
+) {
+    val controller = remember(colorSchemeMode) { ThemeController(colorSchemeMode) }
     MiuixTheme(
         controller = controller,
         content = content

@@ -35,4 +35,8 @@
     <string name="confirm">确认</string>
     <string name="heytap_warning">由于我也不知道的原因，在连接欢律后将无法正常使用本模块，手动放回盒子里重新连接即可恢复。</string>
     <string name="heytap_warning_title">注意</string>
+    <string name="theme_title">主题</string>
+    <string name="theme_follow_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
 </resources>

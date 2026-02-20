@@ -35,13 +35,20 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class PopupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            AppTheme {
+            val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+            val colorSchemeMode = when (prefs.getInt("theme_mode", 0)) {
+                1 -> ColorSchemeMode.Light
+                2 -> ColorSchemeMode.Dark
+                else -> ColorSchemeMode.System
+            }
+            AppTheme(colorSchemeMode = colorSchemeMode) {
                 PopupContent(
                     onMore = {
                         val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
@@ -68,7 +75,15 @@ class PopupActivity : ComponentActivity() {
 private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
     val showDialog = remember { mutableStateOf(true) }
-    val isDarkMode = isSystemInDarkTheme()
+
+    val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+    val themeMode = remember { prefs.getInt("theme_mode", 0) }
+    val systemDark = isSystemInDarkTheme()
+    val isDarkMode = when (themeMode) {
+        1 -> false
+        2 -> true
+        else -> systemDark
+    }
 
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }

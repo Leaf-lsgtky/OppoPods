@@ -34,4 +34,8 @@
     <string name="confirm">Confirm</string>
     <string name="heytap_warning">For some unknown reason, this module will not function properly after connecting to HeyTap Headset. Put the earphones back in the case and reconnect to recover.</string>
     <string name="heytap_warning_title">Notice</string>
+    <string name="theme_title">Theme</string>
+    <string name="theme_follow_system">Follow System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
 </resources>

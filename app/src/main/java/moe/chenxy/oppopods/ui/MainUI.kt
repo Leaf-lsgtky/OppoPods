@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -69,7 +70,10 @@ sealed interface Screen : NavKey {
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
-fun MainUI() {
+fun MainUI(
+    themeMode: MutableState<Int> = mutableStateOf(0),
+    onThemeModeChange: (Int) -> Unit = {}
+) {
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
@@ -301,6 +305,8 @@ fun MainUI() {
             ) { padding ->
                 SettingsPage(
                     modifier = Modifier.padding(padding),
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
                     autoGameMode = autoGameMode,
                     onAutoGameModeChange = {
                         autoGameMode.value = it
