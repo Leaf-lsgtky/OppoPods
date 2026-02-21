@@ -1,10 +1,12 @@
 package moe.chenxy.oppopods.ui.components
 
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,14 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -35,8 +38,6 @@ import top.yukonga.miuix.kmp.utils.pressable
 
 @Composable
 fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -> Unit) {
-    val isDarkMode = isSystemInDarkTheme()
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -44,26 +45,26 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
         verticalAlignment = Alignment.CenterVertically
     ) {
         AncButton(
-            iconRes = R.drawable.ic_transparency,
+            offIconRes = R.drawable.ic_transparent_off,
+            onIconRes = R.drawable.ic_transparent_on,
             label = stringResource(R.string.transparency_title),
             isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
-            isDarkMode = isDarkMode,
             onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
             modifier = Modifier.weight(1f)
         )
         AncButton(
-            iconRes = R.drawable.ic_anc,
+            offIconRes = R.drawable.ic_openanc_off,
+            onIconRes = R.drawable.ic_openanc_on,
             label = stringResource(R.string.noise_cancellation_title),
             isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION,
-            isDarkMode = isDarkMode,
             onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
             modifier = Modifier.weight(1f)
         )
         AncButton(
-            iconRes = R.drawable.ic_normal,
+            offIconRes = R.drawable.ic_closeanc_off,
+            onIconRes = R.drawable.ic_closeanc_on,
             label = stringResource(R.string.off),
             isSelected = ancStatus == NoiseControlMode.OFF,
-            isDarkMode = isDarkMode,
             onClick = { onAncModeChange(NoiseControlMode.OFF) },
             modifier = Modifier.weight(1f)
         )
@@ -72,14 +73,15 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
 
 @Composable
 private fun AncButton(
-    iconRes: Int,
+    offIconRes: Int,
+    onIconRes: Int,
     label: String,
     isSelected: Boolean,
-    isDarkMode: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val iconRes = if (isSelected) onIconRes else offIconRes
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,29 +90,13 @@ private fun AncButton(
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(
-                    when {
-                        isSelected -> MiuixTheme.colorScheme.primary
-                        isDarkMode -> Color(0xFF3C3C3C)
-                        else -> Color(0xFFE8E8E8)
-                    }
-                ),
+            modifier = Modifier.size(70.dp),
             contentAlignment = Alignment.Center
         ) {
             Image(
-                painter = painterResource(iconRes),
+                painter = themedPainterResource(iconRes),
                 contentDescription = label,
-                colorFilter = ColorFilter.tint(
-                    when {
-                        isSelected -> Color.White
-                        isDarkMode -> Color.LightGray
-                        else -> Color(0xFF5E5E5E)
-                    }
-                ),
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(if (isSelected) 70.dp else 56.dp)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -120,5 +106,45 @@ private fun AncButton(
             fontWeight = FontWeight.Medium,
             color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground
         )
+    }
+}
+
+/**
+ * Loads a drawable resource respecting the app's theme override.
+ * Handles both bitmap and vector drawables by rendering via Canvas when needed.
+ */
+@Composable
+private fun themedPainterResource(@androidx.annotation.DrawableRes id: Int): Painter {
+    val context = LocalContext.current
+    val themeConfig = LocalConfiguration.current
+    val sysNightMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+    val themeNightMode = themeConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+    return if (sysNightMode == themeNightMode) {
+        painterResource(id)
+    } else {
+        val themedResources = remember(context, themeNightMode) {
+            context.createConfigurationContext(
+                Configuration(context.resources.configuration).apply {
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or themeNightMode
+                }
+            ).resources
+        }
+        remember(id, themeNightMode) {
+            val drawable = themedResources.getDrawable(id, null)
+            if (drawable is BitmapDrawable) {
+                BitmapPainter(drawable.bitmap.asImageBitmap())
+            } else {
+                val bitmap = Bitmap.createBitmap(
+                    drawable.intrinsicWidth.coerceAtLeast(1),
+                    drawable.intrinsicHeight.coerceAtLeast(1),
+                    Bitmap.Config.ARGB_8888
+                )
+                val canvas = Canvas(bitmap)
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+                BitmapPainter(bitmap.asImageBitmap())
+            }
+        }
     }
 }

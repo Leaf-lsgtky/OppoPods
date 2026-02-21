@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="130dp"
+    android:height="130dp"
+    android:viewportWidth="130"
+    android:viewportHeight="130">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#E8E8E8"
+        android:pathData="M65,65m-65,0a65,65 0,1 1,130 0a65,65 0,1 1,-130 0" />
+    <!-- Person icon -->
+    <path
+        android:fillColor="#5E5E5E"
+        android:pathData="M78,51C78,58.18 72.18,64 65,64C57.82,64 52,58.18 52,51C52,43.82 57.82,38 65,38C72.18,38 78,43.82 78,51ZM49.423,71H80.577C86.886,71 92,75.925 92,82C92,88.075 86.886,93 80.577,93H49.423C43.114,93 38,88.075 38,82C38,75.925 43.114,71 49.423,71Z" />
+    <!-- ANC arc (faint for off mode) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#5E5E5E"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeAlpha="0.24"
+        android:pathData="M49.801,64C46.808,60.504 45,55.963 45,51C45,39.954 53.954,31 65,31C76.046,31 85,39.954 85,51C85,55.963 83.192,60.504 80.199,64" />
+</vector>
