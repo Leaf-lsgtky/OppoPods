@@ -100,20 +100,25 @@ private fun AncButton(
             .pressable(interactionSource = interactionSource, indication = SinkFeedback())
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
-        Crossfade(
-            targetState = isSelected,
-            animationSpec = tween(ANIM_DURATION),
-            label = "anc_icon"
-        ) { selected ->
-            Box(
-                modifier = Modifier.size(56.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = themedPainterResource(if (selected) onIconRes else offIconRes),
-                    contentDescription = label,
-                    modifier = Modifier.size(56.dp)
-                )
+        Box(
+            modifier = Modifier.size(70.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Crossfade(
+                targetState = isSelected,
+                animationSpec = tween(ANIM_DURATION),
+                label = "anc_icon"
+            ) { selected ->
+                Box(
+                    modifier = Modifier.size(70.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = themedPainterResource(if (selected) onIconRes else offIconRes),
+                        contentDescription = label,
+                        modifier = Modifier.size(if (selected) 70.dp else 56.dp)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
