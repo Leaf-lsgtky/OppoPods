@@ -4,24 +4,23 @@
     android:height="162dp"
     android:viewportWidth="162"
     android:viewportHeight="162">
-    <!-- Outer ring (blue) -->
     <path
-        android:fillColor="#3478F6"
-        android:pathData="M81,81m-77,0a77,77 0,1 1,154 0a77,77 0,1 1,-154 0" />
-    <!-- Inner circle (white) -->
+        android:fillColor="#0D84FF"
+        android:pathData="M81,81m-65,0a65,65 0,1 1,130 0a65,65 0,1 1,-130 0" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M81,81m-65,0a65,65 0,1 1,130 0a65,65 0,1 1,-130 0" />
-    <!-- Person icon -->
-    <path
-        android:fillColor="#3478F6"
+        android:fillType="evenOdd"
         android:pathData="M94,67C94,74.18 88.18,80 81,80C73.82,80 68,74.18 68,67C68,59.82 73.82,54 81,54C88.18,54 94,59.82 94,67ZM65.423,87H96.577C102.886,87 108,91.925 108,98C108,104.075 102.886,109 96.577,109H65.423C59.114,109 54,104.075 54,98C54,91.925 59.114,87 65.423,87Z" />
-    <!-- ANC arc (full opacity for NC mode) -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#3478F6"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:pathData="M65.801,80C62.808,76.504 61,71.963 61,67C61,55.954 69.954,47 81,47C92.046,47 101,55.954 101,67C101,71.963 99.192,76.504 96.199,80" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#0D84FF"
+        android:strokeWidth="8"
+        android:pathData="M81,81m-77,0a77,77 0,1 1,154 0a77,77 0,1 1,-154 0" />
 </vector>
