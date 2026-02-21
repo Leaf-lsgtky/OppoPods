@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -89,12 +88,6 @@ private fun AncButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
-    val iconSize by animateDpAsState(
-        targetValue = if (isSelected) 70.dp else 56.dp,
-        animationSpec = tween(ANIM_DURATION),
-        label = "anc_icon_size"
-    )
-
     val textColor by animateColorAsState(
         targetValue = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
         animationSpec = tween(ANIM_DURATION),
@@ -107,25 +100,20 @@ private fun AncButton(
             .pressable(interactionSource = interactionSource, indication = SinkFeedback())
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier.size(70.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Crossfade(
-                targetState = isSelected,
-                animationSpec = tween(ANIM_DURATION),
-                label = "anc_icon"
-            ) { selected ->
-                Box(
-                    modifier = Modifier.size(70.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = themedPainterResource(if (selected) onIconRes else offIconRes),
-                        contentDescription = label,
-                        modifier = Modifier.size(iconSize)
-                    )
-                }
+        Crossfade(
+            targetState = isSelected,
+            animationSpec = tween(ANIM_DURATION),
+            label = "anc_icon"
+        ) { selected ->
+            Box(
+                modifier = Modifier.size(56.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = themedPainterResource(if (selected) onIconRes else offIconRes),
+                    contentDescription = label,
+                    modifier = Modifier.size(56.dp)
+                )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
