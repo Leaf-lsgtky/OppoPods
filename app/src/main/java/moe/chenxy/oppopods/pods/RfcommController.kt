@@ -61,6 +61,8 @@ object RfcommController {
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
+    private var lastKnownCaseBattery: Int = 0
+    private var lastKnownCaseCharging: Boolean = false
 
     // Polling job
     private var batteryPollJob: kotlinx.coroutines.Job? = null
@@ -119,6 +121,8 @@ object RfcommController {
                 changeUIGameModeStatus(currentGameMode)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name)
+                    this.`package` = BuildConfig.APPLICATION_ID
+                    this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     mContext!!.sendBroadcast(this)
                 }
             }
@@ -150,12 +154,23 @@ object RfcommController {
             result.right != null,
             0
         )
-        val case = PodParams(
-            result.case?.level ?: 0,
-            result.case?.isCharging == true,
-            result.case != null,
-            0
-        )
+        val case = if (result.case != null) {
+            lastKnownCaseBattery = result.case.level
+            lastKnownCaseCharging = result.case.isCharging
+            PodParams(
+                result.case.level,
+                result.case.isCharging,
+                true,
+                0
+            )
+        } else {
+            PodParams(
+                lastKnownCaseBattery,
+                lastKnownCaseCharging,
+                false,
+                0
+            )
+        }
 
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "batt left ${left.battery} right ${right.battery} case ${case.battery}")
@@ -235,6 +250,8 @@ object RfcommController {
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
             this.putExtra("device_name", device.name)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             context.sendBroadcast(this)
         }
 
@@ -373,6 +390,8 @@ object RfcommController {
         }
 
         mShowedConnectedToast = false
+        lastKnownCaseBattery = 0
+        lastKnownCaseCharging = false
         mContext = null
         MediaControl.mContext = null
     }

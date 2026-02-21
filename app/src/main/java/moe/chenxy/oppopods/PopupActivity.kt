@@ -131,6 +131,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_UI_INIT))
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_REFRESH_STATUS))
 
         onDispose {
             try { context.unregisterReceiver(broadcastReceiver) } catch (_: Exception) {}

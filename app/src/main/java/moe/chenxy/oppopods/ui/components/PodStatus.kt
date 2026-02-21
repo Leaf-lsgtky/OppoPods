@@ -5,11 +5,11 @@ import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -81,7 +81,7 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
     val level = pod?.battery ?: 0
 
     var lastKnownLevel by remember { mutableIntStateOf(100) }
-    if (isConnected && level > 0) {
+    if (level > 0) {
         lastKnownLevel = level
     }
 
@@ -97,7 +97,6 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
     ) {
         Column(
             horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.padding(vertical = 4.dp)
         ) {
             Text(
@@ -105,11 +104,13 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = displayLevel,
                 fontSize = 13.sp,
                 color = Color.Gray
             )
+            Spacer(modifier = Modifier.height(1.dp))
             Image(
                 painter = themedPainterResource(
                     getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)

@@ -101,7 +101,7 @@ private fun AncButton(
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         Box(
-            modifier = Modifier.size(70.dp),
+            modifier = Modifier.size(60.dp),
             contentAlignment = Alignment.Center
         ) {
             Crossfade(
@@ -110,18 +110,18 @@ private fun AncButton(
                 label = "anc_icon"
             ) { selected ->
                 Box(
-                    modifier = Modifier.size(70.dp),
+                    modifier = Modifier.size(60.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = themedPainterResource(if (selected) onIconRes else offIconRes),
                         contentDescription = label,
-                        modifier = Modifier.size(if (selected) 70.dp else 56.dp)
+                        modifier = Modifier.size(if (selected) 60.dp else 48.dp)
                     )
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             label,
             fontSize = 14.sp,
