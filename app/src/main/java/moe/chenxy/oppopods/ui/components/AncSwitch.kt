@@ -4,6 +4,10 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +40,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.SinkFeedback
 import top.yukonga.miuix.kmp.utils.pressable
+
+private const val ANIM_DURATION = 300
 
 @Composable
 fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -> Unit) {
@@ -81,7 +88,18 @@ private fun AncButton(
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val iconRes = if (isSelected) onIconRes else offIconRes
+
+    val iconSize by animateDpAsState(
+        targetValue = if (isSelected) 70.dp else 56.dp,
+        animationSpec = tween(ANIM_DURATION),
+        label = "anc_icon_size"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
+        animationSpec = tween(ANIM_DURATION),
+        label = "anc_text_color"
+    )
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -93,18 +111,29 @@ private fun AncButton(
             modifier = Modifier.size(70.dp),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = themedPainterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.size(if (isSelected) 70.dp else 56.dp)
-            )
+            Crossfade(
+                targetState = isSelected,
+                animationSpec = tween(ANIM_DURATION),
+                label = "anc_icon"
+            ) { selected ->
+                Box(
+                    modifier = Modifier.size(70.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = themedPainterResource(if (selected) onIconRes else offIconRes),
+                        contentDescription = label,
+                        modifier = Modifier.size(iconSize)
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             label,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
-            color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground
+            color = textColor
         )
     }
 }
