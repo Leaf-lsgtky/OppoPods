@@ -98,12 +98,21 @@ object GameModeFeature {
     const val MAIN = 0x28
 }
 
+/** Spatial audio mode values. */
+object SpatialAudioMode {
+    const val OFF = 0x00
+    const val FIXED = 0x01
+    const val HEAD_TRACKING = 0x02
+}
+
 /** Protocol command codes. */
 object Cmd {
     /** Set ANC mode */
     const val SET_ANC = 0x0404
     /** Set game mode */
     const val SET_GAME_MODE = 0x0403
+    /** Set spatial audio mode */
+    const val SET_SPATIAL_AUDIO = 0x0422
     /** Query battery */
     const val QUERY_BATTERY = 0x0106
     /** Battery response from earphone */
@@ -120,6 +129,10 @@ object Cmd {
     const val QUERY_STATUS_RESPONSE = 0x810D
     /** Switch-feature response */
     const val SET_GAME_MODE_RESPONSE = 0x8403
+    /** Spatial audio mode response */
+    const val SET_SPATIAL_AUDIO_RESPONSE = 0x8422
+    /** Spatial audio mode notification */
+    const val SPATIAL_AUDIO_NOTIFY = 0x0510
 }
 
 /** Pre-built packets. */
@@ -184,6 +197,12 @@ object Enums {
             }
         }
     }
+
+    /** Set spatial audio: AA 08 00 00 22 04 F0 01 00 [mode]. */
+    fun spatialAudioPacket(mode: Int): ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_SPATIAL_AUDIO,
+        payload = byteArrayOf(mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING).toByte())
+    )
 
     /**
      * Batch parameter query (fixed hex blob).
@@ -443,6 +462,27 @@ object GameModeParser {
         } else {
             null
         }
+    }
+}
+
+object SpatialAudioParser {
+    fun parseModeNotify(packet: ByteArray): Int? {
+        if (packet.size < 10 || packet[0] != 0xAA.toByte()) return null
+        val cmd = (packet[4].toInt() and 0xFF) or ((packet[5].toInt() and 0xFF) shl 8)
+        if (cmd != Cmd.SPATIAL_AUDIO_NOTIFY) return null
+        val payLen = (packet[7].toInt() and 0xFF) or ((packet[8].toInt() and 0xFF) shl 8)
+        if (payLen < 1 || packet.size < 9 + payLen) return null
+        val mode = packet[9].toInt() and 0xFF
+        return mode.takeIf { it in SpatialAudioMode.OFF..SpatialAudioMode.HEAD_TRACKING }
+    }
+
+    fun parseSetResponseStatus(packet: ByteArray): Int? {
+        if (packet.size < 10 || packet[0] != 0xAA.toByte()) return null
+        val cmd = (packet[4].toInt() and 0xFF) or ((packet[5].toInt() and 0xFF) shl 8)
+        if (cmd != Cmd.SET_SPATIAL_AUDIO_RESPONSE) return null
+        val payLen = (packet[7].toInt() and 0xFF) or ((packet[8].toInt() and 0xFF) shl 8)
+        if (payLen < 1 || packet.size < 9 + payLen) return null
+        return packet[9].toInt() and 0xFF
     }
 }
 

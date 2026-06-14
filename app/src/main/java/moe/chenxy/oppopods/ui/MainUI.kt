@@ -51,6 +51,7 @@ import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.GameModeImplementation
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
+import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
@@ -91,9 +92,18 @@ fun MainUI(
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
     val hookConnected = remember { mutableStateOf(false) }
     val gameMode = remember { mutableStateOf(false) }
+    val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
 
     val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
+    val milinkSpatialAudioOptionEnabled = remember {
+        mutableStateOf(
+            prefs.getBoolean(
+                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+            )
+        )
+    }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
     val rfcommConnectionMethod = remember {
@@ -158,6 +168,7 @@ fun MainUI(
     val appAnc by appController.ancMode.collectAsState()
     val appDeviceName by appController.deviceName.collectAsState()
     val appGameMode by appController.gameMode.collectAsState()
+    val appSpatialAudioMode by appController.spatialAudioMode.collectAsState()
 
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
@@ -167,6 +178,7 @@ fun MainUI(
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
+    val displaySpatialAudioMode = if (isStandaloneConnected) appSpatialAudioMode else spatialAudioMode.value
     val displayTitle = when {
         hookConnected.value -> mainTitle.value
         isStandaloneConnected -> appDeviceName
@@ -205,6 +217,11 @@ fun MainUI(
                         gameMode.value = p1.getBooleanExtra("enabled", false)
                     }
 
+                    OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED -> {
+                        spatialAudioMode.value = p1.getIntExtra("mode", SpatialAudioMode.OFF)
+                            .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+                    }
+
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
                         mainTitle.value = deviceName ?: ""
@@ -229,6 +246,7 @@ fun MainUI(
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
         }, Context.RECEIVER_EXPORTED)
@@ -281,6 +299,20 @@ fun MainUI(
         }
     }
 
+    fun setSpatialAudioMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        if (isStandaloneConnected) {
+            appController.setSpatialAudioMode(normalizedMode)
+            return
+        }
+        spatialAudioMode.value = normalizedMode
+        Intent(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET).apply {
+            this.putExtra("mode", normalizedMode)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
     fun onDeviceSelected(device: BluetoothDevice) {
         appController.connect(
             device = device,
@@ -318,6 +350,17 @@ fun MainUI(
             Intent(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED).apply {
                 setPackage(targetPackage)
                 settings.putExtras(this)
+                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                context.sendBroadcast(this)
+            }
+        }
+    }
+
+    fun broadcastMilinkSpatialAudioOption(enabled: Boolean) {
+        listOf("com.milink.service", "com.android.settings").forEach { targetPackage ->
+            Intent(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED).apply {
+                setPackage(targetPackage)
+                putExtra(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, enabled)
                 addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 context.sendBroadcast(this)
             }
@@ -387,6 +430,8 @@ fun MainUI(
                             onAncModeChange = { setAncMode(it) },
                             gameMode = displayGameMode,
                             onGameModeChange = { setGameMode(it) },
+                            spatialAudioMode = displaySpatialAudioMode,
+                            onSpatialAudioModeChange = { setSpatialAudioMode(it) },
                             adaptiveModeEnabled = adaptiveMode.value
                         )
                         "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
@@ -570,6 +615,14 @@ fun MainUI(
                             showConnectionNotification.value,
                             notificationIslandStyle.value
                         )
+                    },
+                    milinkSpatialAudioOptionEnabled = milinkSpatialAudioOptionEnabled,
+                    onMilinkSpatialAudioOptionEnabledChange = {
+                        milinkSpatialAudioOptionEnabled.value = it
+                        prefs.edit()
+                            .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, it)
+                            .commit()
+                        broadcastMilinkSpatialAudioOption(it)
                     }
                 )
             }

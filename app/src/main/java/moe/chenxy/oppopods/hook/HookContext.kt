@@ -74,6 +74,19 @@ fun getObjectField(instance: Any?, fieldName: String): Any? {
     throw NoSuchFieldException(fieldName)
 }
 
+fun setObjectField(instance: Any?, fieldName: String, value: Any?) {
+    if (instance == null) return
+    var cls: Class<*>? = instance.javaClass
+    while (cls != null) {
+        runCatching {
+            cls.getDeclaredField(fieldName).apply { isAccessible = true }.set(instance, value)
+            return
+        }
+        cls = cls.superclass
+    }
+    throw NoSuchFieldException(fieldName)
+}
+
 fun callMethod(instance: Any?, methodName: String, vararg args: Any?): Any? {
     if (instance == null) return null
     var cls: Class<*>? = instance.javaClass

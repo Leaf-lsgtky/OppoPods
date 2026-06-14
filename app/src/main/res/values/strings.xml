@@ -14,6 +14,10 @@
     <string name="open_heytap">Open HeyTap Headset on \"More\"</string>
     <string name="open_heytap_summary">Launch HeyTap Headset instead of main page when tapping \"More\"</string>
     <string name="off">Off</string>
+    <string name="spatial_audio">Spatial audio</string>
+    <string name="spatial_audio_fixed">Fixed</string>
+    <string name="spatial_audio_head_tracking">Head tracking</string>
+    <string name="milink_spatial_audio_option">Add spatial audio option to MiLink card</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
     <string name="adaptive_title">Adaptive</string>

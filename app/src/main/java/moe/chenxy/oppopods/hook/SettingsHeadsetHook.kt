@@ -12,6 +12,7 @@ import android.os.Looper
 import android.util.Log
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import java.util.WeakHashMap
 
@@ -31,6 +32,7 @@ object SettingsHeadsetHook : HookContext() {
     private var currentName: String? = null
     private var currentBattery: BatteryParams = BatteryParams()
     private var currentAnc = 1
+    private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
     private var proxyCheckSupportCalls = 0
     private var proxySetCommonCommandCalls = 0
     private var proxyGetDeviceConfigCalls = 0
@@ -157,7 +159,9 @@ object SettingsHeadsetHook : HookContext() {
         val proxyClass = "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub\$Proxy"
         hookProxyStringResult(proxyClass, "checkSupport", BluetoothDevice::class.java) { FAKE_SUPPORT }
         hookProxyStringArgResult(proxyClass, "getDeviceInfo") { FAKE_SUPPORT }
-        hookProxyStringArgResult(proxyClass, "isSupportAudioSwitch") { "1" }
+        hookProxyStringArgResult(proxyClass, "isSupportAudioSwitch") {
+            if (milinkSpatialAudioOptionEnabled) "1" else "0"
+        }
         hookProxyStringArgResult(proxyClass, "setCommonCommand", Int::class.java, String::class.java, BluetoothDevice::class.java) { commandArgs ->
             val command = commandArgs[0] as? Int
             if (command == 102) "0" else "1"
@@ -368,16 +372,22 @@ object SettingsHeadsetHook : HookContext() {
     private fun registerStatusReceiver(ctx: Context?) {
         if (ctx == null || receiverRegistered) return
         context = ctx.applicationContext ?: ctx
+        refreshMilinkSpatialAudioOption()
         loadState()
         val filter = IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
+                    OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
+                        refreshMilinkSpatialAudioOption(intent)
+                        updateFragments()
+                    }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentName = intent.getStringExtra("device_name") ?: currentName
@@ -399,7 +409,7 @@ object SettingsHeadsetHook : HookContext() {
                         updateFragments()
                     }
                 }
-                Log.d(TAG, "state action=${intent?.action} address=$currentAddress anc=$currentAnc battery=${settingsBatteryString()}")
+                Log.d(TAG, "state action=${intent?.action} address=$currentAddress anc=$currentAnc miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled battery=${settingsBatteryString()}")
             }
         }, filter, Context.RECEIVER_EXPORTED)
         receiverRegistered = true
@@ -519,6 +529,24 @@ object SettingsHeadsetHook : HookContext() {
     private fun isOppoAddress(address: String): Boolean {
         val normalized = address.uppercase()
         return normalized == currentAddress?.uppercase() || normalized in knownOppoAddresses
+    }
+
+    private fun refreshMilinkSpatialAudioOption(intent: Intent? = null) {
+        milinkSpatialAudioOptionEnabled = if (
+            intent?.hasExtra(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) == true
+        ) {
+            intent.getBooleanExtra(
+                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+            )
+        } else {
+            runCatching {
+                prefs.getBoolean(
+                    OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                    OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+                )
+            }.getOrDefault(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED)
+        }
     }
 
     private fun settingsBatteryString(): String {

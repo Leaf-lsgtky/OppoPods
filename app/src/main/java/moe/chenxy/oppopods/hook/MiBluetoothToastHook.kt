@@ -306,6 +306,11 @@ object MiBluetoothToastHook : HookContext() {
                     val broadcastReceiver = object : BroadcastReceiver() {
                         override fun onReceive(p0: Context?, p1: Intent?) {
                             if (p1?.action == "chen.action.oppopods.sendstrongtoast") {
+                                val settings = effectiveNotificationSettings(p1)
+                                if (!settings.showConnectionBatteryIsland) {
+                                    Log.d("OppoPods", "Temporary battery island suppressed by settings")
+                                    return
+                                }
                                 val batteryParams = p1.getParcelableExtra(
                                     "batteryParams",
                                     BatteryParams::class.java

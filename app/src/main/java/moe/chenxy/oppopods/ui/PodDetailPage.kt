@@ -15,10 +15,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 @Composable
@@ -30,8 +32,25 @@ fun PodDetailPage(
     onAncModeChange: (NoiseControlMode) -> Unit,
     gameMode: Boolean = false,
     onGameModeChange: (Boolean) -> Unit = {},
+    spatialAudioMode: Int = SpatialAudioMode.OFF,
+    onSpatialAudioModeChange: (Int) -> Unit = {},
     adaptiveModeEnabled: Boolean = true
 ) {
+    val spatialAudioModes = listOf(
+        SpatialAudioMode.OFF,
+        SpatialAudioMode.FIXED,
+        SpatialAudioMode.HEAD_TRACKING
+    )
+    val spatialAudioOptions = listOf(
+        stringResource(R.string.off),
+        stringResource(R.string.spatial_audio_fixed),
+        stringResource(R.string.spatial_audio_head_tracking)
+    )
+    val spatialAudioSelectedIndex = spatialAudioModes
+        .indexOf(spatialAudioMode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING))
+        .takeIf { it >= 0 }
+        ?: 0
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = contentPadding,
@@ -73,6 +92,12 @@ fun PodDetailPage(
                     summary = stringResource(R.string.game_mode_summary),
                     checked = gameMode,
                     onCheckedChange = onGameModeChange
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.spatial_audio),
+                    items = spatialAudioOptions,
+                    selectedIndex = spatialAudioSelectedIndex,
+                    onSelectedIndexChange = { onSpatialAudioModeChange(spatialAudioModes[it]) }
                 )
             }
         }

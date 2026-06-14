@@ -56,6 +56,9 @@ class AppRfcommController {
     private val _gameMode = MutableStateFlow(false)
     val gameMode: StateFlow<Boolean> = _gameMode
 
+    private val _spatialAudioMode = MutableStateFlow(SpatialAudioMode.OFF)
+    val spatialAudioMode: StateFlow<Int> = _spatialAudioMode
+
     fun connect(
         device: BluetoothDevice,
         connectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID,
@@ -186,6 +189,19 @@ class AppRfcommController {
             return
         }
 
+        val spatialAudioResult = SpatialAudioParser.parseModeNotify(packet)
+        if (spatialAudioResult != null) {
+            Log.d(TAG, "Spatial audio mode received: $spatialAudioResult")
+            _spatialAudioMode.value = spatialAudioResult
+            return
+        }
+
+        val spatialAudioSetStatus = SpatialAudioParser.parseSetResponseStatus(packet)
+        if (spatialAudioSetStatus != null) {
+            Log.d(TAG, "Spatial audio set response: $spatialAudioSetStatus")
+            return
+        }
+
         val setFeatureResult = SwitchFeatureSetParser.parse(packet)
         if (setFeatureResult != null) {
             Log.d(TAG, "Switch feature response: status=${setFeatureResult.status}, value=${setFeatureResult.value}")
@@ -205,6 +221,12 @@ class AppRfcommController {
     fun setGameMode(enabled: Boolean) {
         _gameMode.value = enabled
         scope.launch { sendGameModePackets(enabled) }
+    }
+
+    fun setSpatialAudioMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        _spatialAudioMode.value = normalizedMode
+        scope.launch { sendPacket(Enums.spatialAudioPacket(normalizedMode)) }
     }
 
     fun setGameModeImplementation(implementation: GameModeImplementation) {
@@ -260,5 +282,6 @@ class AppRfcommController {
         _ancMode.value = NoiseControlMode.OFF
         _deviceName.value = ""
         _gameMode.value = false
+        _spatialAudioMode.value = SpatialAudioMode.OFF
     }
 }

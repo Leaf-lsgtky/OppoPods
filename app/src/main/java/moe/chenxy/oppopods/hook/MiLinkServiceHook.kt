@@ -2,6 +2,7 @@ package moe.chenxy.oppopods.hook
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
+import android.os.Bundle
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -9,8 +10,11 @@ import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import moe.chenxy.oppopods.BuildConfig
+import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import java.util.concurrent.CompletableFuture
 
@@ -32,9 +36,12 @@ object MiLinkServiceHook : HookContext() {
     private var currentBattery: BatteryParams = BatteryParams()
     private var currentAnc = 1
     private var currentGameMode = false
+    private var currentSpatialAudioMode = SpatialAudioMode.OFF
+    private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
     private var lastPanelRefreshMs = 0L
     private var lastHeadsetController: Any? = null
     private var lastHeadsetDevice: BluetoothDevice? = null
+    private var lastProfileContext: Any? = null
 
     override fun onHook() {
         hookContextEntry()
@@ -43,6 +50,7 @@ object MiLinkServiceHook : HookContext() {
         hookFindRingControllerCommand()
         hookFindRingCommand()
         hookFindRingTitle()
+        hookCirculateHeadsetServiceInfo()
     }
 
     private fun hookContextEntry() {
@@ -69,16 +77,17 @@ object MiLinkServiceHook : HookContext() {
             hookBluetoothDeviceResult(className, "getBatteryLevel") { 1 }
             hookBluetoothDeviceResult(className, "getAncState") { miLinkAncState() }
             hookBluetoothDeviceResult(className, "getDeviceRunInfo") { 0 }
-            hookBluetoothDeviceResult(className, "getSpatialMode") { 0 }
+            hookBluetoothDeviceResult(className, "getSpatialMode") { miLinkSpatialMode() }
             hookBluetoothDeviceResult(className, "getWearStatus") { "0,0" }
             hookBluetoothDeviceResult(className, "isLeAudio") { false }
             hookAncCommand(className, "openAnc", 2, 1)
             hookAncCommand(className, "closeAnc", 1, 0)
             hookAncCommand(className, "openTransparent", 3, 2)
+            hookSpatialCommand(className, "setSpatialMode")
         }
         classes.forEach { className ->
             hookStringAddressResult(className, "isMiTWS") { true }
-            hookStringAddressResult(className, "isSupportAudioSwitch") { 1 }
+            hookStringAddressResult(className, "isSupportAudioSwitch") { miLinkSwitchState() }
             hookStringAddressResult(className, "getRingFindState") { miLinkFindRingActive() }
         }
     }
@@ -87,18 +96,29 @@ object MiLinkServiceHook : HookContext() {
         hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getDeviceId") { FAKE_DEVICE_ID }
         hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getBatteryLevel", reconnectOnRead = true) { miLinkBatteryLevels() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getFindRingState") { miLinkFindRingState() }
+        hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getAudioSpatialEffectState") { miLinkSpatialMode() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getDeviceId") { FAKE_DEVICE_ID }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getAncState") { miLinkAncState() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getFindRingState") { miLinkFindRingState() }
+        hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getMiAudioEffect") { miLinkSpatialMode() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getBatteryLevelCache", reconnectOnRead = true) { miLinkBatteryLevels() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getHeadsetPropertyBlock", reconnectOnRead = true) { batteryPercentForMiLink() }
+        hookStringAddressResult("com.miui.headset.runtime.AncBatteryController", "getSwitchState") { miLinkSwitchState() }
         hookAncStateBlock()
+        hookSpatialStateBlock()
+        hookDeviceSpatialTypeModel()
+        hookSpatialCallbacks()
+        hookProfileAudioEffectState()
         hookHeadsetInfoNoArg("getDeviceId") { FAKE_DEVICE_ID }
         hookHeadsetInfoNoArg("component3") { FAKE_DEVICE_ID }
         hookHeadsetInfoNoArg("getPowers", reconnectOnRead = true) { miLinkBatteryLevels() }
         hookHeadsetInfoNoArg("component4", reconnectOnRead = true) { miLinkBatteryLevels() }
         hookHeadsetInfoNoArg("getMode") { miLinkAncState() }
         hookHeadsetInfoNoArg("component5") { miLinkAncState() }
+        hookHeadsetInfoNoArg("getSwitchState") { miLinkSwitchState() }
+        hookHeadsetInfoNoArg("component8") { miLinkSwitchState() }
+        hookHeadsetInfoNoArg("getAudioEffectState") { miLinkAudioEffectState() }
+        hookHeadsetInfoNoArg("component10") { miLinkAudioEffectState() }
         hookHeadsetInfoNoArg("getFindRingState") { miLinkFindRingState() }
         hookHeadsetInfoNoArg("component11") { miLinkFindRingState() }
     }
@@ -115,6 +135,7 @@ object MiLinkServiceHook : HookContext() {
                 if (!isOppoPod(device)) return@hookAfter
                 val old = this.result
                 rememberHeadsetController(className, instance, device)
+                captureRuntimeContext(instance)
                 if (reconnectOnRead) {
                     requestPanelBluetoothStatus("$className.$methodName")
                 }
@@ -144,6 +165,8 @@ object MiLinkServiceHook : HookContext() {
             hookBefore(findMethod(className, methodName, BluetoothDevice::class.java)) {
                 val device = args[0] as? BluetoothDevice ?: return@hookBefore
                 if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController(className, instance, device)
+                captureRuntimeContext(instance)
                 currentAnc = oppoAnc
                 sendOppoAnc(oppoAnc)
                 this.result = result
@@ -152,11 +175,36 @@ object MiLinkServiceHook : HookContext() {
         }.onFailure { Log.w(TAG, "hook $className.$methodName command skipped", it) }
     }
 
+    private fun hookSpatialCommand(className: String, methodName: String) {
+        runCatching {
+            hookBefore(findMethod(className, methodName, BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController(className, instance, device)
+                captureRuntimeContext(instance)
+                if (!spatialAudioPanelEnabled()) {
+                    this.result = 0
+                    Log.d(TAG, "$className.$methodName ignored: MiLink spatial option disabled address=${device.address}")
+                    return@hookBefore
+                }
+                val miLinkMode = args[1] as? Int ?: return@hookBefore
+                val mode = oppoSpatialFromMiLink(miLinkMode)
+                updateSpatialAudioMode(mode)
+                sendOppoSpatialAudio(mode)
+                sendSpatialChanged(mode)
+                notifySpatialUiChanged(instance, device, mode)
+                this.result = 1
+                Log.d(TAG, "$className.$methodName handled address=${device.address} miLinkMode=$miLinkMode oppoMode=$mode")
+            }
+        }.onFailure { Log.w(TAG, "hook $className.$methodName spatial command skipped", it) }
+    }
+
     private fun hookAncStateBlock() {
         runCatching {
             hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController", "setAncStateBlock", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
                 val device = args[0] as? BluetoothDevice ?: return@hookBefore
                 if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController("com.miui.headset.runtime.AncBatteryController", instance, device)
                 val miLinkMode = args[1] as? Int ?: return@hookBefore
                 val oppoAnc = oppoAncFromMiLink(miLinkMode)
                 val instanceContext = runCatching { getObjectField(instance, "context") as? Context }.getOrNull()
@@ -172,6 +220,109 @@ object MiLinkServiceHook : HookContext() {
                 Log.d(TAG, "AncBatteryController.setAncStateBlock handled address=${device.address} miLinkMode=$miLinkMode oppoAnc=$oppoAnc result=${this.result} context=${instanceContext ?: context}")
             }
         }.onFailure { Log.w(TAG, "hook AncBatteryController.setAncStateBlock skipped", it) }
+    }
+
+    private fun hookSpatialStateBlock() {
+        runCatching {
+            hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController", "setMiAudioEffect", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController("com.miui.headset.runtime.AncBatteryController", instance, device)
+                captureRuntimeContext(instance)
+                if (!spatialAudioPanelEnabled()) {
+                    this.result = null
+                    Log.d(TAG, "AncBatteryController.setMiAudioEffect ignored: MiLink spatial option disabled address=${device.address}")
+                    return@hookBefore
+                }
+                val mode = oppoSpatialFromMiLink(args[1] as? Int ?: return@hookBefore)
+                updateSpatialAudioMode(mode)
+                sendOppoSpatialAudio(mode)
+                sendSpatialChanged(mode)
+                notifySpatialUiChanged(instance, device, mode)
+                this.result = null
+                Log.d(TAG, "AncBatteryController.setMiAudioEffect handled address=${device.address} oppoMode=$mode")
+            }
+        }.onFailure { Log.w(TAG, "hook AncBatteryController.setMiAudioEffect skipped", it) }
+
+        runCatching {
+            hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController", "setHeadTracking", BluetoothDevice::class.java)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController("com.miui.headset.runtime.AncBatteryController", instance, device)
+                captureRuntimeContext(instance)
+                if (!spatialAudioPanelEnabled()) {
+                    this.result = 201
+                    Log.d(TAG, "AncBatteryController.setHeadTracking ignored: MiLink spatial option disabled address=${device.address}")
+                    return@hookBefore
+                }
+                updateSpatialAudioMode(SpatialAudioMode.HEAD_TRACKING)
+                sendOppoSpatialAudio(currentSpatialAudioMode)
+                sendSpatialChanged(currentSpatialAudioMode)
+                notifySpatialUiChanged(instance, device, currentSpatialAudioMode)
+                this.result = FIND_RING_RESULT_SUCCESS
+                Log.d(TAG, "AncBatteryController.setHeadTracking handled address=${device.address}")
+            }
+        }.onFailure { Log.w(TAG, "hook AncBatteryController.setHeadTracking skipped", it) }
+    }
+
+    private fun hookDeviceSpatialTypeModel() {
+        runCatching {
+            hookAfter(findMethodByParamCount("com.miui.headset.runtime.AncBatteryModel", "getDeviceSpatialType", 0)) {
+                if (!isTargetAncBatteryModel(instance)) return@hookAfter
+                this.result = miLinkDeviceSpatialType()
+            }
+        }.onFailure { Log.w(TAG, "hook AncBatteryModel.getDeviceSpatialType skipped", it) }
+
+        runCatching {
+            hookAfter(findMethod("com.miui.headset.runtime.AncBatteryModel", "setDeviceSpatialType", Int::class.javaPrimitiveType!!)) {
+                if (!isTargetAncBatteryModel(instance)) return@hookAfter
+                setObjectField(instance, "deviceSpatialType", miLinkDeviceSpatialType())
+            }
+        }.onFailure { Log.w(TAG, "hook AncBatteryModel.setDeviceSpatialType skipped", it) }
+    }
+
+    private fun hookSpatialCallbacks() {
+        runCatching {
+            hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController\$mmaCallback\$1", "onDeviceSpatialType", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                notifySpatialUiChanged(instance, device, currentSpatialAudioMode)
+                this.result = null
+            }
+        }.onFailure { Log.w(TAG, "hook mmaCallback.onDeviceSpatialType skipped", it) }
+
+        runCatching {
+            hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController\$mmaCallback\$1", "onReportSpatialState", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                notifySpatialUiChanged(instance, device, currentSpatialAudioMode)
+                this.result = null
+            }
+        }.onFailure { Log.w(TAG, "hook mmaCallback.onReportSpatialState skipped", it) }
+    }
+
+    private fun hookProfileAudioEffectState() {
+        runCatching {
+            hookBefore(findMethod("com.miui.headset.runtime.ProfileContext", "setAudioEffectState", BluetoothDevice::class.java, String::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                rememberHeadsetController("com.miui.headset.runtime.ProfileContext", instance, device)
+                captureRuntimeContext(instance)
+                if (!spatialAudioPanelEnabled()) {
+                    this.result = null
+                    Log.d(TAG, "ProfileContext.setAudioEffectState ignored: MiLink spatial option disabled address=${device.address}")
+                    return@hookBefore
+                }
+                val mode = (args[2] as? Int ?: return@hookBefore)
+                    .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+                updateSpatialAudioMode(mode)
+                sendOppoSpatialAudio(mode)
+                sendSpatialChanged(mode)
+                notifySpatialUiChanged(instance, device, mode)
+                this.result = null
+                Log.d(TAG, "ProfileContext.setAudioEffectState handled address=${device.address} mode=$mode")
+            }
+        }.onFailure { Log.w(TAG, "hook ProfileContext.setAudioEffectState skipped", it) }
     }
 
     private fun hookFindRingCommand() {
@@ -259,6 +410,23 @@ object MiLinkServiceHook : HookContext() {
         }.onFailure { Log.w(TAG, "hook SynergyView.setTitle skipped", it) }
     }
 
+    private fun hookCirculateHeadsetServiceInfo() {
+        runCatching {
+            hookAfter(findMethod("com.miui.circulate.api.service.CirculateServiceInfo", "setHeadsetId", String::class.java, Int::class.javaPrimitiveType!!)) {
+                val headsetId = args[0] as? String ?: return@hookAfter
+                val address = runCatching { getObjectField(instance, "deviceId") as? String }.getOrNull()
+                if (address != null && !isOppoAddress(address) && headsetId != FAKE_DEVICE_ID) return@hookAfter
+                if (address == null && headsetId != FAKE_DEVICE_ID) return@hookAfter
+                if (spatialAudioPanelEnabled()) return@hookAfter
+                val serviceProperties = runCatching { getObjectField(instance, "serviceProperties") }.getOrNull()
+                val bundle = runCatching { callMethod(serviceProperties, "getAll") as? Bundle }.getOrNull()
+                    ?: return@hookAfter
+                bundle.putInt("headset_switch_state", 0)
+                Log.d(TAG, "CirculateServiceInfo.setHeadsetId disabled spatial switch address=$address headsetId=$headsetId")
+            }
+        }.onFailure { Log.w(TAG, "hook CirculateServiceInfo.setHeadsetId skipped", it) }
+    }
+
     private fun hookHeadsetInfoNoArg(
         methodName: String,
         reconnectOnRead: Boolean = false,
@@ -280,16 +448,24 @@ object MiLinkServiceHook : HookContext() {
     private fun registerStatusReceiver(ctx: Context?) {
         if (ctx == null || receiverRegistered) return
         context = ctx.applicationContext ?: ctx
+        refreshMilinkSpatialAudioOption()
+        loadState()
         val filter = IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
+            addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
+                    OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
+                        refreshMilinkSpatialAudioOption(intent)
+                        notifySpatialUiChanged()
+                    }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentName = intent.getStringExtra("device_name") ?: currentName
@@ -317,8 +493,16 @@ object MiLinkServiceHook : HookContext() {
                         saveState(context)
                         notifyFindRingChanged()
                     }
+                    OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED -> {
+                        currentAddress = intent.getStringExtra("address") ?: currentAddress
+                        currentSpatialAudioMode = intent.getIntExtra("mode", currentSpatialAudioMode)
+                            .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+                        currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
+                        saveState(context)
+                        notifySpatialUiChanged()
+                    }
                 }
-                Log.d(TAG, "state action=${intent?.action} address=$currentAddress name=$currentName anc=$currentAnc gameMode=$currentGameMode rawBattery=${currentBattery.debugString()} miLinkBattery=${miLinkBatteryLevels()}")
+                Log.d(TAG, "state action=${intent?.action} address=$currentAddress name=$currentName anc=$currentAnc gameMode=$currentGameMode spatial=$currentSpatialAudioMode miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled rawBattery=${currentBattery.debugString()} miLinkBattery=${miLinkBatteryLevels()}")
             }
         }, filter, Context.RECEIVER_EXPORTED)
         receiverRegistered = true
@@ -397,6 +581,77 @@ object MiLinkServiceHook : HookContext() {
         return currentGameMode
     }
 
+    private fun miLinkSpatialMode(): Int {
+        loadState()
+        if (!spatialAudioPanelEnabled()) return -1
+        return miLinkSpatialModeFromMode(currentSpatialAudioMode)
+    }
+
+    private fun oppoSpatialFromMiLink(mode: Int): Int {
+        return when (mode) {
+            9, 11 -> SpatialAudioMode.HEAD_TRACKING
+            1 -> SpatialAudioMode.FIXED
+            else -> SpatialAudioMode.OFF
+        }
+    }
+
+    private fun miLinkSpatialModeFromMode(mode: Int): Int {
+        if (!spatialAudioPanelEnabled()) return -1
+        return when (mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)) {
+            SpatialAudioMode.HEAD_TRACKING -> 11
+            SpatialAudioMode.FIXED -> 1
+            else -> 0
+        }
+    }
+
+    private fun miLinkAudioEffectState(): Int {
+        loadState()
+        return currentAudioEffectState()
+    }
+
+    private fun miLinkDeviceSpatialType(): Int {
+        return if (spatialAudioPanelEnabled()) 1 else 0
+    }
+
+    private fun miLinkSwitchState(): Int {
+        return if (spatialAudioPanelEnabled()) 1 else 0
+    }
+
+    private fun currentAudioEffectState(): Int {
+        return if (spatialAudioPanelEnabled()) {
+            currentSpatialAudioMode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        } else {
+            -1
+        }
+    }
+
+    private fun spatialAudioPanelEnabled(): Boolean {
+        return milinkSpatialAudioOptionEnabled
+    }
+
+    private fun updateSpatialAudioMode(mode: Int) {
+        currentSpatialAudioMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        saveState(context)
+    }
+
+    private fun refreshMilinkSpatialAudioOption(intent: Intent? = null) {
+        milinkSpatialAudioOptionEnabled = if (
+            intent?.hasExtra(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) == true
+        ) {
+            intent.getBooleanExtra(
+                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+            )
+        } else {
+            runCatching {
+                prefs.getBoolean(
+                    OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                    OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+                )
+            }.getOrDefault(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED)
+        }
+    }
+
     private fun miLinkBatteryLevels(): List<Int> {
         loadState()
         val left = batteryValue(currentBattery.left)
@@ -457,6 +712,39 @@ object MiLinkServiceHook : HookContext() {
         Log.d(TAG, "sendOppoGameMode broadcast sent enabled=$enabled")
     }
 
+    private fun sendOppoSpatialAudio(mode: Int, fallbackContext: Context? = null) {
+        if (!spatialAudioPanelEnabled()) {
+            Log.d(TAG, "sendOppoSpatialAudio skipped: MiLink spatial option disabled mode=$mode")
+            return
+        }
+        val ctx = fallbackContext ?: context ?: run {
+            Log.w(TAG, "sendOppoSpatialAudio skipped: context is null mode=$mode")
+            return
+        }
+        Intent(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET).apply {
+            putExtra("mode", mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING))
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            ctx.sendBroadcast(this)
+        }
+        Log.d(TAG, "sendOppoSpatialAudio broadcast sent mode=$mode")
+    }
+
+    private fun sendSpatialChanged(mode: Int, fallbackContext: Context? = null) {
+        val ctx = fallbackContext ?: context ?: return
+        val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        listOf(BuildConfig.APPLICATION_ID, "com.milink.service", "com.android.settings").forEach { targetPackage ->
+            ctx.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED).apply {
+                currentAddress?.let { putExtra("address", it) }
+                currentName?.let { putExtra("device_name", it) }
+                putExtra("mode", normalizedMode)
+                setPackage(targetPackage)
+                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            })
+        }
+        Log.d(TAG, "sendSpatialChanged broadcast sent mode=$normalizedMode")
+    }
+
     private fun sendMiLinkAncChanged(mode: Int, fallbackContext: Context? = null) {
         val ctx = fallbackContext ?: context ?: return
         ctx.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_ANC_CHANGED).apply {
@@ -472,10 +760,64 @@ object MiLinkServiceHook : HookContext() {
         notifyHeadsetPropertyChanged(controller, device, HEADSET_FIND_RING_CHANGED)
     }
 
+    private fun notifySpatialUiChanged(
+        owner: Any? = lastHeadsetController ?: lastProfileContext,
+        device: BluetoothDevice? = lastHeadsetDevice,
+        mode: Int = currentSpatialAudioMode
+    ) {
+        val targetDevice = device ?: return
+        val spatialMode = miLinkSpatialModeFromMode(mode)
+        val audioEffectState = currentAudioEffectState()
+        listOf(owner, lastHeadsetController, lastProfileContext)
+            .distinctBy { it?.javaClass?.name }
+            .forEach { target ->
+                syncSpatialModel(target, targetDevice, spatialMode)
+                notifyHeadsetPropertyChanged(target, targetDevice, 9)
+                notifyHeadsetPropertyChanged(target, targetDevice, 4)
+                notifyProfileAudioEffectListeners(target, audioEffectState)
+            }
+    }
+
+    private fun syncSpatialModel(owner: Any?, device: BluetoothDevice, spatialMode: Int) {
+        val model = runCatching { getObjectField(owner, "ancBatteryModel") }.getOrNull() ?: return
+        if (!isTargetAncBatteryModel(model, device)) return
+        runCatching { setObjectField(model, "spatialState", spatialMode) }
+        runCatching { setObjectField(model, "deviceSpatialType", miLinkDeviceSpatialType()) }
+    }
+
+    private fun notifyProfileAudioEffectListeners(owner: Any?, audioEffectState: Int) {
+        runCatching {
+            val listener = getObjectField(owner, "audioEffectListener")
+            callMethod(listener, "invoke", audioEffectState)
+        }
+    }
+
     private fun rememberHeadsetController(className: String, controller: Any?, device: BluetoothDevice) {
-        if (className != "com.miui.headset.runtime.AncBatteryController") return
-        lastHeadsetController = controller
-        lastHeadsetDevice = device
+        when (className) {
+            "com.miui.headset.runtime.AncBatteryController" -> {
+                lastHeadsetController = controller
+                lastHeadsetDevice = device
+            }
+            "com.miui.headset.runtime.ProfileContext" -> {
+                lastProfileContext = controller
+                lastHeadsetDevice = device
+            }
+        }
+    }
+
+    private fun captureRuntimeContext(owner: Any?) {
+        val ownerContext = runCatching { getObjectField(owner, "context") as? Context }.getOrNull()
+            ?: runCatching { getObjectField(lastProfileContext, "context") as? Context }.getOrNull()
+            ?: runCatching { getObjectField(lastHeadsetController, "context") as? Context }.getOrNull()
+            ?: return
+        context = ownerContext.applicationContext ?: ownerContext
+    }
+
+    private fun isTargetAncBatteryModel(model: Any?, fallbackDevice: BluetoothDevice? = lastHeadsetDevice): Boolean {
+        val device = runCatching { callMethod(model, "getBluetoothDevice") as? BluetoothDevice }.getOrNull()
+            ?: fallbackDevice
+            ?: return false
+        return isOppoPod(device)
     }
 
     private fun shouldIgnoreFindRingStop(): Boolean {
@@ -576,6 +918,7 @@ object MiLinkServiceHook : HookContext() {
             .putString("name", currentName)
             .putInt("anc", currentAnc)
             .putBoolean("game_mode", currentGameMode)
+            .putInt("spatial_audio_mode", currentSpatialAudioMode)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
@@ -594,6 +937,8 @@ object MiLinkServiceHook : HookContext() {
         currentName = prefs.getString("name", currentName)
         currentAnc = prefs.getInt("anc", currentAnc)
         currentGameMode = prefs.getBoolean("game_mode", currentGameMode)
+        currentSpatialAudioMode = prefs.getInt("spatial_audio_mode", currentSpatialAudioMode)
+            .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
         currentBattery = BatteryParams(
             left = PodParams(

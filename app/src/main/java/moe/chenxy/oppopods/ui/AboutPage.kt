@@ -199,7 +199,10 @@ fun AdvancedSettingsPage(
     onShowConnectionPopupChange: (Boolean) -> Unit = {},
     connectionPopupDismissSeconds: MutableState<Int> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS),
-    onConnectionPopupDismissSecondsChange: (Int) -> Unit = {}
+    onConnectionPopupDismissSecondsChange: (Int) -> Unit = {},
+    milinkSpatialAudioOptionEnabled: MutableState<Boolean> =
+        mutableStateOf(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED),
+    onMilinkSpatialAudioOptionEnabledChange: (Boolean) -> Unit = {}
 ) {
     val rfcommConnectionOptions = listOf(
         stringResource(R.string.rfcomm_connection_method_uuid),
@@ -266,6 +269,11 @@ fun AdvancedSettingsPage(
                     summary = stringResource(R.string.open_heytap_summary),
                     checked = openHeyTap.value,
                     onCheckedChange = { onOpenHeyTapChange(it) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.milink_spatial_audio_option),
+                    checked = milinkSpatialAudioOptionEnabled.value,
+                    onCheckedChange = { onMilinkSpatialAudioOptionEnabledChange(it) }
                 )
             }
         }

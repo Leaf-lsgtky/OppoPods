@@ -64,6 +64,7 @@ object RfcommController {
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
+    private var currentSpatialAudioMode: Int = SpatialAudioMode.OFF
     private var gameModeImplementation: GameModeImplementation = GameModeImplementation.STANDARD
     private var rfcommConnectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID
     private var lastGameModeStatusUpdateMs: Long = 0L
@@ -132,6 +133,19 @@ object RfcommController {
         }
     }
 
+    private fun changeUISpatialAudioStatus(mode: Int) {
+        val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        Intent(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED).apply {
+            this.putExtra("mode", normalizedMode)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED) {
+            putExtra("mode", normalizedMode)
+        }
+    }
+
     private fun refreshPodsNotification() {
         val context = mContext ?: return
         if (!::mDevice.isInitialized) return
@@ -159,6 +173,7 @@ object RfcommController {
                     changeUIBatteryStatus(currentBatteryParams)
                 changeUIAncStatus(currentAnc)
                 changeUIGameModeStatus(currentGameMode)
+                changeUISpatialAudioStatus(currentSpatialAudioMode)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     this.`package` = BuildConfig.APPLICATION_ID
@@ -183,6 +198,10 @@ object RfcommController {
             OppoPodsAction.ACTION_GAME_MODE_SET -> {
                 val enabled = intent.getBooleanExtra("enabled", false)
                 setGameMode(enabled)
+            }
+            OppoPodsAction.ACTION_SPATIAL_AUDIO_SET -> {
+                val mode = intent.getIntExtra("mode", SpatialAudioMode.OFF)
+                setSpatialAudioMode(mode)
             }
             OppoPodsAction.ACTION_GAME_MODE_IMPLEMENTATION_CHANGED -> {
                 gameModeImplementation = GameModeImplementation.fromPreference(
@@ -290,7 +309,8 @@ object RfcommController {
             if (showConnectionBatteryIslandEnabled) {
                 MiuiStrongToastUtil.showPodsBatteryToastByMiuiBt(
                     context,
-                    batteryParams
+                    batteryParams,
+                    notificationSettings
                 )
             }
             if (showConnectionPopupEnabled) {
@@ -397,6 +417,7 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
+            this.addAction(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_IMPLEMENTATION_CHANGED)
             this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
             this.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
@@ -630,6 +651,20 @@ object RfcommController {
             return
         }
 
+        val spatialAudioResult = SpatialAudioParser.parseModeNotify(packet)
+        if (spatialAudioResult != null) {
+            Log.d(TAG, "Spatial audio mode received: $spatialAudioResult")
+            currentSpatialAudioMode = spatialAudioResult
+            changeUISpatialAudioStatus(spatialAudioResult)
+            return
+        }
+
+        val spatialAudioSetStatus = SpatialAudioParser.parseSetResponseStatus(packet)
+        if (spatialAudioSetStatus != null) {
+            Log.d(TAG, "Spatial audio set response: $spatialAudioSetStatus")
+            return
+        }
+
         val setFeatureResult = SwitchFeatureSetParser.parse(packet)
         if (setFeatureResult != null) {
             Log.d(TAG, "Switch feature response: status=${setFeatureResult.status}, value=${setFeatureResult.value}")
@@ -664,6 +699,7 @@ object RfcommController {
         mShowedConnectedToast = false
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
+        currentSpatialAudioMode = SpatialAudioMode.OFF
         cachedDeviceName = ""
         mContext = null
         MediaControl.mContext = null
@@ -716,6 +752,16 @@ object RfcommController {
         changeUIGameModeStatus(enabled)
         CoroutineScope(Dispatchers.IO).launch {
             sendGameModePackets(enabled)
+        }
+    }
+
+    fun setSpatialAudioMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        Log.d(TAG, "setSpatialAudioMode: $normalizedMode")
+        currentSpatialAudioMode = normalizedMode
+        changeUISpatialAudioStatus(normalizedMode)
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(Enums.spatialAudioPacket(normalizedMode), "set spatial audio mode")
         }
     }
 
