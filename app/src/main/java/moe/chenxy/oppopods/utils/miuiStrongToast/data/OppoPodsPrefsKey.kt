@@ -8,6 +8,8 @@ object OppoPodsPrefsKey {
     const val CONNECTION_POPUP_DISMISS_SECONDS = "connection_popup_dismiss_seconds"
     const val SHOW_CONNECTION_NOTIFICATION = "show_connection_notification"
     const val NOTIFICATION_ISLAND_STYLE = "notification_island_style"
+    const val NOTIFICATION_SETTINGS_UPDATED_AT = "notification_settings_updated_at"
+    const val NOTIFICATION_SETTINGS_CACHE_PREFS_NAME = "oppopods_notification_settings_cache"
     const val MILINK_SPATIAL_AUDIO_OPTION_ENABLED = "milink_spatial_audio_option_enabled"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true

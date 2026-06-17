@@ -344,8 +344,10 @@ fun MainUI(
             showConnectionPopup = showConnectionPopupEnabled,
             connectionPopupDismissSeconds = connectionPopupDismissSecondsValue,
             showConnectionNotification = showConnectionNotificationEnabled,
-            notificationIslandStyle = notificationIslandStyleEnabled
+            notificationIslandStyle = notificationIslandStyleEnabled,
+            updatedAt = System.currentTimeMillis()
         )
+        settings.writeToPrefs(prefs, commit = true)
         listOf("com.android.bluetooth", "com.xiaomi.bluetooth").forEach { targetPackage ->
             Intent(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED).apply {
                 setPackage(targetPackage)

@@ -90,7 +90,7 @@ object RfcommController {
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
-            p1?.let { handleUIEvent(it) }
+            p1?.let { handleUIEvent(it, p0) }
         }
     }
 
@@ -165,7 +165,51 @@ object RfcommController {
         )
     }
 
-    fun handleUIEvent(intent: Intent) {
+    fun syncNotificationSettings(
+        context: Context?,
+        intent: Intent,
+        refreshNotification: Boolean = false
+    ) {
+        val settings = NotificationSettings.fromIntent(intent, notificationSettings)
+            .withUpdatedAtIfMissing()
+        notificationSettings = settings
+        context?.let { cacheNotificationSettings(it, settings) }
+        Log.d(
+            TAG,
+            "Notification settings synced: batteryIsland=$showConnectionBatteryIslandEnabled, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled, updatedAt=${notificationSettings.updatedAt}"
+        )
+        if (refreshNotification) {
+            refreshPodsNotification()
+        }
+    }
+
+    private fun loadNotificationSettings(context: Context): NotificationSettings {
+        reloadPrefs()
+        val remoteSettings = NotificationSettings.fromPrefs(mPrefs)
+        val cachedSettings = context.getSharedPreferences(
+            OppoPodsPrefsKey.NOTIFICATION_SETTINGS_CACHE_PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).let { NotificationSettings.fromPrefsOrNull(it) }
+        if (
+            remoteSettings.updatedAt == 0L &&
+            mPrefs.contains(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION) &&
+            !remoteSettings.showConnectionNotification
+        ) {
+            return remoteSettings
+        }
+        return NotificationSettings.newerOf(remoteSettings, cachedSettings)
+    }
+
+    private fun cacheNotificationSettings(context: Context, settings: NotificationSettings) {
+        settings.withUpdatedAtIfMissing().writeToPrefs(
+            context.getSharedPreferences(
+                OppoPodsPrefsKey.NOTIFICATION_SETTINGS_CACHE_PREFS_NAME,
+                Context.MODE_PRIVATE
+            )
+        )
+    }
+
+    fun handleUIEvent(intent: Intent, receiverContext: Context? = null) {
         when (intent.action) {
             OppoPodsAction.ACTION_PODS_UI_INIT -> {
                 Log.i(TAG, "UI Init")
@@ -222,12 +266,7 @@ object RfcommController {
                 }
             }
             OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED -> {
-                notificationSettings = NotificationSettings.fromIntent(intent, notificationSettings)
-                Log.d(
-                    TAG,
-                    "Notification settings synced: batteryIsland=$showConnectionBatteryIslandEnabled, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled"
-                )
-                refreshPodsNotification()
+                syncNotificationSettings(receiverContext ?: mContext, intent, refreshNotification = true)
             }
         }
     }
@@ -395,12 +434,14 @@ object RfcommController {
         mDevice = device
         mPrefs = prefs
         cachedDeviceName = device.name ?: ""
+        reloadPrefs()
         // 初始化 Adaptive 模式状态缓存，从 SharedPreferences 读取当前值
         adaptiveModeEnabled = mPrefs.getBoolean("adaptive_mode", true)
         gameModeImplementation = GameModeImplementation.fromPreference(
             mPrefs.getString(GameModeImplementation.PREF_KEY, null)
         )
-        notificationSettings = NotificationSettings.fromPrefs(mPrefs)
+        notificationSettings = loadNotificationSettings(context)
+        cacheNotificationSettings(context, notificationSettings)
         rfcommConnectionMethod = RfcommConnectionMethod.fromPreference(
             mPrefs.getString(RfcommConnectionMethod.PREF_KEY, null)
         )
@@ -497,9 +538,19 @@ object RfcommController {
 
     private fun refreshRfcommConnectionMethod() {
         if (::mPrefs.isInitialized) {
+            reloadPrefs()
             rfcommConnectionMethod = RfcommConnectionMethod.fromPreference(
                 mPrefs.getString(RfcommConnectionMethod.PREF_KEY, null)
             )
+        }
+    }
+
+    private fun reloadPrefs() {
+        if (!::mPrefs.isInitialized) return
+        runCatching {
+            mPrefs.javaClass.methods.firstOrNull {
+                it.name == "reload" && it.parameterTypes.isEmpty()
+            }?.invoke(mPrefs)
         }
     }
 

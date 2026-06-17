@@ -22,6 +22,7 @@ import moe.chenxy.oppopods.utils.SystemApisUtils.notifyAsUser
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.R
 
 @SuppressLint("MissingPermission")
@@ -61,15 +62,72 @@ object MiBluetoothToastHook : HookContext() {
             )
         }
 
-        fun effectiveNotificationSettings(intent: Intent? = null): NotificationSettings {
-            return NotificationSettings.fromIntent(intent, notificationSettings)
+        fun cancelAllPodsNotifications(context: Context) {
+            try {
+                val notificationManager = context.getSystemService("notification") as NotificationManager
+                notificationManager.activeNotifications
+                    .filter {
+                        it.id == NOTIFICATION_ID &&
+                            (it.tag?.startsWith(NOTIFICATION_TAG_PREFIX) == true ||
+                                it.tag?.startsWith(LEGACY_ISLAND_NOTIFICATION_TAG_PREFIX) == true)
+                    }
+                    .mapNotNull { it.tag }
+                    .forEach { cancelNotificationByTag(notificationManager, it) }
+                lastNotificationIslandStyle.clear()
+                lastNotificationDevice = null
+                lastNotificationBatteryParams = null
+            } catch (e: Exception) {
+                Log.e("OppoPods", "Failed to cancel active Pod Notifications!", e)
+            }
         }
 
-        fun syncNotificationSettings(intent: Intent) {
+        fun cachedNotificationSettings(context: Context): NotificationSettings? {
+            return context.getSharedPreferences(
+                OppoPodsPrefsKey.NOTIFICATION_SETTINGS_CACHE_PREFS_NAME,
+                Context.MODE_PRIVATE
+            ).let { NotificationSettings.fromPrefsOrNull(it) }
+        }
+
+        fun cacheNotificationSettings(context: Context, settings: NotificationSettings) {
+            settings.withUpdatedAtIfMissing().writeToPrefs(
+                context.getSharedPreferences(
+                    OppoPodsPrefsKey.NOTIFICATION_SETTINGS_CACHE_PREFS_NAME,
+                    Context.MODE_PRIVATE
+                )
+            )
+        }
+
+        fun loadNotificationSettings(context: Context): NotificationSettings {
+            reloadRemotePrefs()
+            val remoteSettings = NotificationSettings.fromPrefs(prefs)
+            if (
+                remoteSettings.updatedAt == 0L &&
+                prefs.contains(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION) &&
+                !remoteSettings.showConnectionNotification
+            ) {
+                return remoteSettings
+            }
+            return NotificationSettings.newerOf(remoteSettings, cachedNotificationSettings(context))
+        }
+
+        fun effectiveNotificationSettings(
+            intent: Intent? = null,
+            context: Context? = null
+        ): NotificationSettings {
+            val intentSettings = NotificationSettings.fromIntent(intent, notificationSettings)
+            return NotificationSettings.newerOf(
+                intentSettings,
+                context?.let { cachedNotificationSettings(it) }
+            )
+        }
+
+        fun syncNotificationSettings(context: Context, intent: Intent) {
             notificationSettings = NotificationSettings.fromIntent(intent, notificationSettings)
+                .withUpdatedAtIfMissing()
+            cacheNotificationSettings(context, notificationSettings)
             Log.d(
                 "OppoPods",
-                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}"
+                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}, updatedAt=${notificationSettings.updatedAt}"
             )
         }
 
@@ -301,12 +359,16 @@ object MiBluetoothToastHook : HookContext() {
 
         hookConstructorAfter(findConstructorByParamCount("com.android.bluetooth.ble.app.MiuiBluetoothNotification", 2)) {
             val context = getObjectField(instance, "mContext") as Context
-            notificationSettings = NotificationSettings.fromPrefs(prefs)
+            notificationSettings = loadNotificationSettings(context)
+            cacheNotificationSettings(context, notificationSettings)
+            if (!notificationSettings.showConnectionNotification) {
+                cancelAllPodsNotifications(context)
+            }
 
                     val broadcastReceiver = object : BroadcastReceiver() {
                         override fun onReceive(p0: Context?, p1: Intent?) {
                             if (p1?.action == "chen.action.oppopods.sendstrongtoast") {
-                                val settings = effectiveNotificationSettings(p1)
+                                val settings = effectiveNotificationSettings(p1, context)
                                 if (!settings.showConnectionBatteryIsland) {
                                     Log.d("OppoPods", "Temporary battery island suppressed by settings")
                                     return
@@ -319,7 +381,7 @@ object MiBluetoothToastHook : HookContext() {
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)
                                 val device = p1.getParcelableExtra("device", BluetoothDevice::class.java)
-                                val settings = effectiveNotificationSettings(p1)
+                                val settings = effectiveNotificationSettings(p1, context)
                                 if (settings.showConnectionNotification && batteryParams != null) {
                                     createPodsNotification(
                                         device,
@@ -330,6 +392,8 @@ object MiBluetoothToastHook : HookContext() {
                                     )
                                 } else if (device != null) {
                                     cancelNotification(device, context)
+                                } else {
+                                    cancelAllPodsNotifications(context)
                                 }
                             } else if (p1?.action == "chen.action.oppopods.cancelpodsnotification") {
                                 val device = p1.getParcelableExtra(
@@ -349,11 +413,15 @@ object MiBluetoothToastHook : HookContext() {
                                     localAncMode = 2
                                 }
                             } else if (p1?.action == OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED) {
-                                syncNotificationSettings(p1)
+                                syncNotificationSettings(context, p1)
                                 val lastDevice = lastNotificationDevice
                                 val lastBatteryParams = lastNotificationBatteryParams
                                 if (!notificationSettings.showConnectionNotification) {
-                                    lastDevice?.let { cancelNotification(it, context) }
+                                    if (lastDevice != null) {
+                                        cancelNotification(lastDevice, context)
+                                    } else {
+                                        cancelAllPodsNotifications(context)
+                                    }
                                 } else if (lastDevice != null && lastBatteryParams != null) {
                                     createPodsNotification(
                                         lastDevice,

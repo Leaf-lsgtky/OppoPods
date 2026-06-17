@@ -4,13 +4,19 @@ import android.annotation.SuppressLint
 import android.app.StatusBarManager
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.util.Log
 import moe.chenxy.oppopods.pods.RfcommController
 import moe.chenxy.oppopods.utils.SystemApisUtils.setIconVisibility
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 
 object HeadsetStateDispatcher : HookContext() {
+    private var notificationSettingsReceiverRegistered = false
 
     override fun onHook() {
         hookAfter(findMethodByParamCount("com.android.bluetooth.a2dp.A2dpService", "handleConnectionStateChanged", 3)) {
@@ -24,6 +30,7 @@ object HeadsetStateDispatcher : HookContext() {
             handler.post {
                 Log.d("OppoPods", "A2DP Connection State: $currState, isOppoPod ${isOppoPod(device)}")
                 val context = instance as ContextWrapper
+                registerNotificationSettingsReceiver(context)
                 if (!isOppoPod(device)) return@post
 
                 val statusBarManager = context.getSystemService("statusbar") as StatusBarManager
@@ -36,6 +43,25 @@ object HeadsetStateDispatcher : HookContext() {
                 }
             }
         }
+    }
+
+    private fun registerNotificationSettingsReceiver(context: Context) {
+        if (notificationSettingsReceiverRegistered) return
+        context.registerReceiver(
+            object : BroadcastReceiver() {
+                override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                    if (intent?.action != OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED) return
+                    RfcommController.syncNotificationSettings(
+                        receiverContext ?: context,
+                        intent,
+                        refreshNotification = false
+                    )
+                }
+            },
+            IntentFilter(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED),
+            Context.RECEIVER_EXPORTED
+        )
+        notificationSettingsReceiverRegistered = true
     }
 
     /**

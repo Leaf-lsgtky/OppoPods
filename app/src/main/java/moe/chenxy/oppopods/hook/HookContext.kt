@@ -48,6 +48,14 @@ abstract class HookContext {
             chain.proceed().also { HookParam(chain, it).apply(block) }
         }
     }
+
+    fun reloadRemotePrefs() {
+        runCatching {
+            prefs.javaClass.methods.firstOrNull {
+                it.name == "reload" && it.parameterTypes.isEmpty()
+            }?.invoke(prefs)
+        }
+    }
 }
 
 class HookParam(private val chain: XposedInterface.Chain, initialResult: Any?) {
