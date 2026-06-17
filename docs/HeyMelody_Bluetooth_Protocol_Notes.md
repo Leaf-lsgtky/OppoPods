@@ -119,6 +119,69 @@ OppoPods 当前已经使用或解析的命令：
 | 批量状态响应 | `0x810D` | `0x28` 是游戏模式主开关，`0x06` 是低延迟游戏模式 |
 | 设置游戏模式 | `0x0403` | 标准模式只发 `28 01/00`；兼容模式开启发 `28 01` + `06 01`，关闭发 `06 00` + `28 00` |
 | 设置 ANC | `0x0404` | `01 01 <mode>` |
+| 查询空间音频类型 | `0x012A` | 官方 `getHeadsetSpatialType`，空 payload |
+| 设置空间音频类型 | `0x0422` | payload 为单字节 `<type>`：`00`=关闭，`01`=固定，`02`=头部跟踪 |
+| 空间音频主动上报 | `0x0510` | payload 首字节为当前 `<type>` |
+
+### 空间音频
+
+当前 OppoPods 按官方新空间音频协议实现三档控制，只使用 `0x0422 setHeadsetSpatialType`，暂不把 `0x0403 featureId=0x1B` 当作三档菜单的控制路径。
+
+完整外层包：
+
+```text
+关闭:     AA 08 00 00 22 04 F0 01 00 00
+固定:     AA 08 00 00 22 04 F0 01 00 01
+头部跟踪: AA 08 00 00 22 04 F0 01 00 02
+```
+
+实现位置：
+
+- `Packets.kt`
+  - `SpatialAudioMode.OFF = 0`
+  - `SpatialAudioMode.FIXED = 1`
+  - `SpatialAudioMode.HEAD_TRACKING = 2`
+  - `Enums.spatialAudioPacket(mode)` 生成 `0x0422` 包
+  - `SpatialAudioParser` 解析 `0x0510` 主动上报和 `0x8422` 设置响应
+- `RfcommController.kt` / `AppRfcommController.kt`
+  - `setSpatialAudioMode(mode)` 乐观更新 UI，再发送 `Enums.spatialAudioPacket(mode)`
+  - 收到 `0x0510` 后广播 `ACTION_PODS_SPATIAL_AUDIO_CHANGED`
+
+### MiLink 卡片空间音频入口
+
+高级设置项 `在 MiLink 卡片添加空间音频选项` 对应偏好键：
+
+```text
+milink_spatial_audio_option_enabled
+```
+
+默认值为 `true`。App 保存后广播：
+
+```text
+ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED
+```
+
+目标进程：
+
+```text
+com.milink.service
+com.android.settings
+```
+
+MiLink 的模式值和 OPPO 空间音频类型映射：
+
+| MiLink 值 | 含义 | OPPO `0x0422` type |
+|---:|---|---:|
+| `0` | 关闭 | `0` |
+| `1` | 固定空间音频 | `1` |
+| `9` | 手机头部跟踪 | `2` |
+| `11` | 耳机头部跟踪 | `2` |
+
+Hook 方法：
+
+- 开关开启时，`MiLinkServiceHook` 让 `getSpatialMode` / `getMiAudioEffect` / `getAudioSpatialEffectState` 返回当前空间音频状态，并 hook `setSpatialMode` / `setMiAudioEffect` / `setHeadTracking` / `setAudioEffectState` 转发为 OPPO `0x0422`。
+- 开关关闭时，MiLink 空间音频相关 getter 返回 unsupported，`isSupportAudioSwitch` / `getSwitchState` 返回不支持，MiLink 发起的空间音频命令被拦截，不发送 OPPO 包。
+- UI 同步时写入 `AncBatteryModel.spatialState` 和 `deviceSpatialType`，并通知 `headsetPropertyChangeListener` 的 updateType `9` 和 `4`。
 
 ## OppoPods 当前落地
 

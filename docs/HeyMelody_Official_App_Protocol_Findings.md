@@ -859,11 +859,34 @@ Payload：
 <type:1>
 ```
 
+已按当前实机和 fork 交叉验证采用三档：
+
+| type | OppoPods 文案 | MiLink 对应 |
+| ---: | --- | --- |
+| `0x00` | 关闭 | `SpatialMode.CLOSE = 0` |
+| `0x01` | 固定 | `SpatialMode.OPEN = 1` |
+| `0x02` | 头部跟踪 | `SpatialMode.PHONE_HEAD_TRACKING = 9` 或 `EARPHONE_HEAD_TRACKING = 11` |
+
 Inner packet：
 
 ```text
 22 04 <seq> 01 00 <type>
 ```
+
+OppoPods 使用固定 seq `F0` 时，完整外层包为：
+
+```text
+AA 08 00 00 22 04 F0 01 00 00  # 关闭
+AA 08 00 00 22 04 F0 01 00 01  # 固定
+AA 08 00 00 22 04 F0 01 00 02  # 头部跟踪
+```
+
+相关响应 / 上报：
+
+| Cmd | 方向 | 说明 |
+| --- | --- | --- |
+| `0x8422` | 耳机响应设置结果 | payload 首字节为 status |
+| `0x0510` | 耳机主动上报 | payload 首字节为当前 type |
 
 本机日志里：
 
@@ -873,6 +896,35 @@ SpatialAudioHelper ... spatialType: 0
 ```
 
 说明 `067410 / OPPO Enco X3` 当前官方 App UI 支持新空间音频逻辑，当前类型为 `0`。
+
+### OppoPods MiLink 空间音频接入
+
+目标是在 HyperOS MiLink 卡片里显示/隐藏空间音频入口，同时保持 OppoPods 首页下拉菜单始终可用。
+
+设置项：
+
+```text
+在 MiLink 卡片添加空间音频选项
+```
+
+偏好键：
+
+```text
+milink_spatial_audio_option_enabled
+```
+
+广播：
+
+```text
+ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED
+```
+
+实现要点：
+
+- 开启时：MiLink 侧 `getSpatialMode`、`getMiAudioEffect`、`getAudioSpatialEffectState` 等 getter 返回当前状态；`setSpatialMode`、`setMiAudioEffect`、`setHeadTracking`、`setAudioEffectState` 映射为 OPPO `0x0422`。
+- 关闭时：MiLink 空间音频相关 getter 返回 unsupported，`isSupportAudioSwitch` / `getSwitchState` 返回不支持；MiLink 发起的设置命令只更新/吞掉结果，不发送 OPPO 包。
+- MiLink 值到 OPPO 值映射：`0 -> 0`，`1 -> 1`，`9/11 -> 2`。
+- UI 刷新时同步 `AncBatteryModel.spatialState`、`deviceSpatialType`，并通知 updateType `9` 和 `4`。
 
 ### `0x012B / 0x0423 game sound`
 

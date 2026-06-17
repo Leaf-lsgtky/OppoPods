@@ -386,6 +386,7 @@ object SettingsHeadsetHook : HookContext() {
                 when (intent?.action) {
                     OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
                         refreshMilinkSpatialAudioOption(intent)
+                        saveState(context)
                         updateFragments()
                     }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
@@ -532,21 +533,37 @@ object SettingsHeadsetHook : HookContext() {
     }
 
     private fun refreshMilinkSpatialAudioOption(intent: Intent? = null) {
+        val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cached = localPrefs
+            ?.takeIf { it.contains(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) }
+            ?.getBoolean(
+                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
+                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+            )
         milinkSpatialAudioOptionEnabled = if (
             intent?.hasExtra(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) == true
         ) {
             intent.getBooleanExtra(
                 OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
-                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+                cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
             )
         } else {
-            runCatching {
+            reloadRemotePrefs()
+            val remoteValue = runCatching {
                 prefs.getBoolean(
                     OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
-                    OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+                    cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
                 )
-            }.getOrDefault(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED)
+            }.getOrDefault(cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED)
+            if (cached == false && remoteValue == OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED) {
+                false
+            } else {
+                remoteValue
+            }
         }
+        localPrefs?.edit()
+            ?.putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
+            ?.apply()
     }
 
     private fun settingsBatteryString(): String {
@@ -682,6 +699,7 @@ object SettingsHeadsetHook : HookContext() {
             .putString("address", currentAddress)
             .putString("name", currentName)
             .putInt("anc", currentAnc)
+            .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)
