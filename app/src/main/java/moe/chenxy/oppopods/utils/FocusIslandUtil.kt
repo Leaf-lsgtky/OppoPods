@@ -39,8 +39,12 @@ object FocusIslandUtil {
             val moduleContext = context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            val leftBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_left)
-            val rightBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_right)
+            // 按名字解析资源 ID（而非编译期 R 常量），避免模块更新后资源 ID 移位、
+            // 宿主进程仍持旧 dex 常量导致跨进程取到错图
+            val leftId = moduleContext.resources.getIdentifier("img_left", "drawable", MODULE_PACKAGE)
+            val rightId = moduleContext.resources.getIdentifier("img_right", "drawable", MODULE_PACKAGE)
+            val leftBitmap = if (leftId != 0) BitmapFactory.decodeResource(moduleContext.resources, leftId) else null
+            val rightBitmap = if (rightId != 0) BitmapFactory.decodeResource(moduleContext.resources, rightId) else null
 
             if (leftBitmap == null || rightBitmap == null) {
                 Log.e(TAG, "Failed to decode earphone icon bitmaps")

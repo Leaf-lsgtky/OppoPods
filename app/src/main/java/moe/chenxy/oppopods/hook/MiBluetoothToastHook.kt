@@ -218,8 +218,10 @@ object MiBluetoothToastHook : HookContext() {
                 val moduleContext = context.createPackageContext(
                     "moe.chenxy.oppopods", Context.CONTEXT_IGNORE_SECURITY
                 )
+                // 按名字解析资源 ID，避免模块更新后资源 ID 移位导致跨进程取到错图
+                val boxId = moduleContext.resources.getIdentifier("img_box", "drawable", "moe.chenxy.oppopods")
                 val headsetIcon = Icon.createWithBitmap(
-                    BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_box)
+                    BitmapFactory.decodeResource(moduleContext.resources, boxId)
                 )
                 val pendingIntent = PendingIntent.getActivity(
                     context,
