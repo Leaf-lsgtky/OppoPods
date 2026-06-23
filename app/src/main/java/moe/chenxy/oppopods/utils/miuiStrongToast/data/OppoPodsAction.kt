@@ -20,6 +20,8 @@ object OppoPodsAction {
     const val ACTION_ADAPTIVE_MODE_CHANGED = "chen.action.oppopods.adaptive_mode_changed"
     const val ACTION_NOTIFICATION_SETTINGS_CHANGED = "chen.action.oppopods.notification_settings_changed"
     const val ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED = "chen.action.oppopods.milink_spatial_audio_option_changed"
+    // 自定义按钮（MiLink 面板劫持控件）功能变更广播（App → com.milink.service）
+    const val ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED = "chen.action.oppopods.custom_button_function_changed"
 
     const val EXTRA_ALLOW_RFCOMM_RECONNECT = "allow_rfcomm_reconnect"
     const val EXTRA_RFCOMM_CONNECTED = "rfcomm_connected"

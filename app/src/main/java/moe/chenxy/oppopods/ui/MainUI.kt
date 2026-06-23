@@ -48,6 +48,7 @@ import androidx.navigation3.ui.NavDisplay
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
+import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.GameModeImplementation
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
@@ -117,6 +118,13 @@ fun MainUI(
         mutableStateOf(
             GameModeImplementation.fromPreference(
                 prefs.getString(GameModeImplementation.PREF_KEY, null)
+            )
+        )
+    }
+    val customButtonFunction = remember {
+        mutableStateOf(
+            CustomButtonFunction.fromPreference(
+                prefs.getString(CustomButtonFunction.PREF_KEY, null)
             )
         )
     }
@@ -366,6 +374,15 @@ fun MainUI(
                 addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 context.sendBroadcast(this)
             }
+        }
+    }
+
+    fun broadcastCustomButtonFunction(value: String) {
+        Intent(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED).apply {
+            setPackage("com.milink.service")
+            putExtra(CustomButtonFunction.PREF_KEY, value)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            context.sendBroadcast(this)
         }
     }
 
@@ -625,6 +642,14 @@ fun MainUI(
                             .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, it)
                             .commit()
                         broadcastMilinkSpatialAudioOption(it)
+                    },
+                    customButtonFunction = customButtonFunction,
+                    onCustomButtonFunctionChange = {
+                        customButtonFunction.value = it
+                        prefs.edit()
+                            .putString(CustomButtonFunction.PREF_KEY, it.preferenceValue)
+                            .commit()
+                        broadcastCustomButtonFunction(it.preferenceValue)
                     }
                 )
             }

@@ -10,7 +10,11 @@ import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
+import android.graphics.drawable.Drawable
 import moe.chenxy.oppopods.BuildConfig
+import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
@@ -28,6 +32,11 @@ object MiLinkServiceHook : HookContext() {
     private const val FIND_RING_ACTIVE = 103
     private const val FIND_RING_RESULT_SUCCESS = 100
     private const val HEADSET_FIND_RING_CHANGED = 10
+    private const val GAME_MODE_TITLE = "游戏模式"
+    private const val GAME_MODE_SUBTITLE_ON = "已开启"
+    private const val GAME_MODE_SUBTITLE_OFF = "已关闭"
+    private const val FIND_RING_HIDDEN = -1
+    private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
     private val knownOppoAddresses = linkedSetOf<String>()
     private var context: Context? = null
     private var receiverRegistered = false
@@ -38,6 +47,10 @@ object MiLinkServiceHook : HookContext() {
     private var currentGameMode = false
     private var currentSpatialAudioMode = SpatialAudioMode.OFF
     private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
+    private var customButtonFunction = CustomButtonFunction.GAME_MODE
+    @Volatile
+    private var panelDetaching = false
+    private var gameModeIcon: Drawable? = null
     private var lastPanelRefreshMs = 0L
     private var lastHeadsetController: Any? = null
     private var lastHeadsetDevice: BluetoothDevice? = null
@@ -51,6 +64,44 @@ object MiLinkServiceHook : HookContext() {
         hookFindRingCommand()
         hookFindRingTitle()
         hookCirculateHeadsetServiceInfo()
+        hookHeadSetsDetailDetach()
+    }
+
+    // 自定义按钮（被劫持的 MiRing 面板控件）某个功能的行为定义。
+    // 新增功能：加一个 CustomButtonFunction 取值 + 一个 handler + activeHandler() 里加分支即可，
+    // 各 hook（显隐/点击/标题副标题图标/detach 抑制）都通过 activeHandler() 分发，无需改散落的判断。
+    private class CustomButtonHandler(
+        // 当前是否“开”（决定 SUCCESS 高亮 / find-ring active）
+        val isActive: () -> Boolean,
+        // 用户点击切换到 enabled 时执行（通常广播一个 action 给 com.android.bluetooth）
+        val onToggle: (enabled: Boolean, ctx: Context?) -> Unit,
+        // 控件标题
+        val title: () -> CharSequence,
+        // 副标题（按当前 active 状态；返回 null = 不显示副标题）
+        val subtitle: (active: Boolean) -> CharSequence?,
+        // 控件图标（返回 null = 保持原生图标）
+        val icon: (view: View) -> Drawable?,
+    )
+
+    // 游戏模式：点击 → 广播 ACTION_GAME_MODE_SET，状态取自 currentGameMode
+    private val gameModeHandler = CustomButtonHandler(
+        isActive = { currentGameMode },
+        onToggle = { enabled, ctx ->
+            currentGameMode = enabled
+            sendOppoGameMode(enabled, ctx)
+        },
+        title = { GAME_MODE_TITLE },
+        subtitle = { active -> if (active) GAME_MODE_SUBTITLE_ON else GAME_MODE_SUBTITLE_OFF },
+        icon = { view -> loadGameModeIcon(view) },
+    )
+
+    // 返回当前自定义按钮功能对应的 handler；NONE → null（控件隐藏）
+    private fun activeHandler(): CustomButtonHandler? {
+        loadState()
+        return when (customButtonFunction) {
+            CustomButtonFunction.GAME_MODE -> gameModeHandler
+            CustomButtonFunction.NONE -> null
+        }
     }
 
     private fun hookContextEntry() {
@@ -330,6 +381,7 @@ object MiLinkServiceHook : HookContext() {
             hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController", "setFindRing", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
                 val device = args[0] as? BluetoothDevice ?: return@hookBefore
                 if (!isOppoPod(device)) return@hookBefore
+                val handler = activeHandler() ?: return@hookBefore
                 val state = args[1] as? Int ?: return@hookBefore
                 val instanceContext = runCatching { getObjectField(instance, "context") as? Context }.getOrNull()
                 if (instanceContext != null) {
@@ -337,26 +389,25 @@ object MiLinkServiceHook : HookContext() {
                 }
                 rememberHeadsetController("com.miui.headset.runtime.AncBatteryController", instance, device)
 
-                if (state == FIND_RING_IDLE && shouldIgnoreFindRingStop()) {
+                if (state == FIND_RING_IDLE && panelDetaching) {
                     this.result = FIND_RING_RESULT_SUCCESS
                     Log.d(TAG, "AncBatteryController.setFindRing lifecycle stop ignored address=${device.address}")
                     return@hookBefore
                 }
 
                 val enabled = state != FIND_RING_IDLE
-                if (enabled == currentGameMode) {
+                if (enabled == handler.isActive()) {
                     notifyFindRingChanged(instance, device)
                     this.result = FIND_RING_RESULT_SUCCESS
-                    Log.d(TAG, "AncBatteryController.setFindRing duplicate ignored address=${device.address} state=$state gameMode=$currentGameMode")
+                    Log.d(TAG, "AncBatteryController.setFindRing duplicate ignored address=${device.address} state=$state active=${handler.isActive()}")
                     return@hookBefore
                 }
 
-                currentGameMode = enabled
-                sendOppoGameMode(enabled, instanceContext)
+                handler.onToggle(enabled, instanceContext)
                 saveState(instanceContext)
                 notifyFindRingChanged(instance, device)
                 this.result = FIND_RING_RESULT_SUCCESS
-                Log.d(TAG, "AncBatteryController.setFindRing handled address=${device.address} state=$state gameMode=$enabled")
+                Log.d(TAG, "AncBatteryController.setFindRing handled address=${device.address} state=$state active=$enabled")
             }
         }.onFailure { Log.w(TAG, "hook AncBatteryController.setFindRing skipped", it) }
     }
@@ -377,7 +428,7 @@ object MiLinkServiceHook : HookContext() {
             methods.forEach { method ->
                 hookBefore(method) {
                     val state = args[1] as? Int ?: return@hookBefore
-                    if (state == FIND_RING_IDLE && isHeadSetsDetailDetachCall()) {
+                    if (state == FIND_RING_IDLE && activeHandler() != null && panelDetaching) {
                         this.result = CompletableFuture.completedFuture(FIND_RING_RESULT_SUCCESS)
                         Log.d(TAG, "HeadsetServiceController.${method.name} detach stop ignored")
                     }
@@ -402,10 +453,19 @@ object MiLinkServiceHook : HookContext() {
             hookBefore(synergyViewClass.getDeclaredMethod("setTitle", Int::class.javaPrimitiveType!!).apply { isAccessible = true }) {
                 val view = instance as? View ?: return@hookBefore
                 val resId = args[0] as? Int ?: return@hookBefore
-                val title = gameModeTitleReplacement(view, resId) ?: return@hookBefore
-                if (!setSynergyTitle(view, title)) return@hookBefore
+                val handler = activeHandler() ?: return@hookBefore
+                // 仅作用于 MiRing（mi_audio_ringing_view，自定义按钮真正挂载处）
+                if (resourceEntryName(view, view.id) != "mi_audio_ringing_view") return@hookBefore
+                val active = when (resourceEntryName(view, resId)) {
+                    "circulate_headset_control_audio_find_earphone" -> false
+                    "circulate_headset_control_audio_stop_find_earphone" -> true
+                    else -> return@hookBefore
+                }
+                if (!setSynergyTitle(view, handler.title())) return@hookBefore
+                applySubtitle(view, resId, handler.subtitle(active))
+                applyIcon(view, resId, handler.icon(view))
                 this.result = null
-                Log.d(TAG, "SynergyView.setTitle replaced res=${resourceEntryName(view, resId)} title=$title")
+                Log.d(TAG, "SynergyView.setTitle replaced res=${resourceEntryName(view, resId)} title=${handler.title()} active=$active")
             }
         }.onFailure { Log.w(TAG, "hook SynergyView.setTitle skipped", it) }
     }
@@ -449,6 +509,7 @@ object MiLinkServiceHook : HookContext() {
         if (ctx == null || receiverRegistered) return
         context = ctx.applicationContext ?: ctx
         refreshMilinkSpatialAudioOption()
+        refreshCustomButtonFunction()
         loadState()
         val filter = IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
@@ -458,6 +519,7 @@ object MiLinkServiceHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
             addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
+            addAction(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -466,6 +528,12 @@ object MiLinkServiceHook : HookContext() {
                         refreshMilinkSpatialAudioOption(intent)
                         saveState(context)
                         notifySpatialUiChanged()
+                    }
+                    OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED -> {
+                        refreshCustomButtonFunction(intent)
+                        saveState(context)
+                        // 立即刷新面板该控件的显隐
+                        notifyFindRingChanged()
                     }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
@@ -573,13 +641,13 @@ object MiLinkServiceHook : HookContext() {
     }
 
     private fun miLinkFindRingState(): Int {
-        loadState()
-        return if (currentGameMode) FIND_RING_ACTIVE else FIND_RING_IDLE
+        // 自定义按钮=无（无 handler）：返回隐藏哨兵，面板会隐藏该控件
+        val handler = activeHandler() ?: return FIND_RING_HIDDEN
+        return if (handler.isActive()) FIND_RING_ACTIVE else FIND_RING_IDLE
     }
 
     private fun miLinkFindRingActive(): Boolean {
-        loadState()
-        return currentGameMode
+        return activeHandler()?.isActive() ?: false
     }
 
     private fun miLinkSpatialMode(): Int {
@@ -666,6 +734,26 @@ object MiLinkServiceHook : HookContext() {
         }
         localPrefs?.edit()
             ?.putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
+            ?.apply()
+    }
+
+    // 解析自定义按钮功能：intent extra > 本地缓存 > 远程 prefs（默认 GAME_MODE）
+    private fun refreshCustomButtonFunction(intent: Intent? = null) {
+        val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cached = localPrefs
+            ?.takeIf { it.contains(CustomButtonFunction.PREF_KEY) }
+            ?.getString(CustomButtonFunction.PREF_KEY, null)
+            ?.let { CustomButtonFunction.fromPreference(it) }
+        customButtonFunction = if (intent?.hasExtra(CustomButtonFunction.PREF_KEY) == true) {
+            CustomButtonFunction.fromPreference(intent.getStringExtra(CustomButtonFunction.PREF_KEY))
+        } else {
+            reloadRemotePrefs()
+            runCatching {
+                CustomButtonFunction.fromPreference(prefs.getString(CustomButtonFunction.PREF_KEY, null))
+            }.getOrDefault(cached ?: CustomButtonFunction.GAME_MODE)
+        }
+        localPrefs?.edit()
+            ?.putString(CustomButtonFunction.PREF_KEY, customButtonFunction.preferenceValue)
             ?.apply()
     }
 
@@ -837,8 +925,19 @@ object MiLinkServiceHook : HookContext() {
         return isOppoPod(device)
     }
 
-    private fun shouldIgnoreFindRingStop(): Boolean {
-        return isHeadSetsDetailDetachCall()
+    // hook HeadSetsDetail.onDetachedFromWindow，用标志位标记面板正在销毁，
+    // 取代脆弱的运行时堆栈判断（关面板时系统会自动发 find-ring stop，需吞掉以免误关游戏模式）
+    private fun hookHeadSetsDetailDetach() {
+        val detailClass = findHeadSetsDetailClass() ?: run {
+            Log.w(TAG, "hook HeadSetsDetail.onDetachedFromWindow skipped: class not found")
+            return
+        }
+        runCatching {
+            val method = detailClass.getDeclaredMethod("onDetachedFromWindow").apply { isAccessible = true }
+            hookBefore(method) { panelDetaching = true }
+            hookAfter(method) { panelDetaching = false }
+            Log.d(TAG, "hooked ${detailClass.name}.onDetachedFromWindow")
+        }.onFailure { Log.w(TAG, "hook HeadSetsDetail.onDetachedFromWindow skipped", it) }
     }
 
     private fun findHeadSetsDetailClass(): Class<*>? {
@@ -877,20 +976,52 @@ object MiLinkServiceHook : HookContext() {
         }.onEach { it.isAccessible = true }
     }
 
-    private fun isHeadSetsDetailDetachCall(): Boolean {
-        return Throwable().stackTrace.any {
-            it.className.endsWith(".HeadSetsDetail") && it.methodName == "onDetachedFromWindow"
-        }
+    // returns true if this title res = game-mode ON (stop_find_earphone / SUCCESS), false if OFF, null if not the game control.
+    // 仅作用于 MiRing（mi_audio_ringing_view，游戏模式真正挂载处），不再误改本地响铃 audio_ringing_view。
+    // 在 SynergyView 的 item_subtitle 上显示副标题（text=null → 不显示，保持原生）
+    private fun applySubtitle(view: View, resId: Int, text: CharSequence?) {
+        text ?: return
+        runCatching {
+            val pkg = view.resources.getResourcePackageName(resId)
+            val subtitleId = view.resources.getIdentifier("item_subtitle", "id", pkg)
+            if (subtitleId == 0) {
+                Log.w(TAG, "applySubtitle skipped: item_subtitle id not found pkg=$pkg")
+                return
+            }
+            val subtitle = view.findViewById<TextView>(subtitleId) ?: return
+            subtitle.text = text
+            subtitle.visibility = View.VISIBLE
+            Log.d(TAG, "applySubtitle set text=$text id=$subtitleId")
+        }.onFailure { Log.w(TAG, "applySubtitle failed", it) }
     }
 
-    private fun gameModeTitleReplacement(view: View, resId: Int): CharSequence? {
-        val viewName = resourceEntryName(view, view.id)
-        if (viewName != "mi_audio_ringing_view" && viewName != "audio_ringing_view") return null
-        return when (resourceEntryName(view, resId)) {
-            "circulate_headset_control_audio_find_earphone" -> "打开游戏模式"
-            "circulate_headset_control_audio_stop_find_earphone" -> "关闭游戏模式"
-            else -> null
-        }
+    // 在 SynergyView 的 item_icon 上设置自定义图标（drawable=null → 保持原生）
+    private fun applyIcon(view: View, resId: Int, drawable: Drawable?) {
+        drawable ?: return
+        runCatching {
+            val pkg = view.resources.getResourcePackageName(resId)
+            val iconId = view.resources.getIdentifier("item_icon", "id", pkg)
+            if (iconId == 0) {
+                Log.w(TAG, "applyIcon skipped: item_icon id not found pkg=$pkg")
+                return
+            }
+            val iconView = view.findViewById<ImageView>(iconId) ?: return
+            iconView.setImageDrawable(drawable.constantState?.newDrawable()?.mutate() ?: drawable)
+            Log.d(TAG, "applyIcon set id=$iconId")
+        }.onFailure { Log.w(TAG, "applyIcon failed", it) }
+    }
+
+    // 从模块 APK 跨包加载游戏模式图标并缓存（妙享进程无法直接访问模块资源）
+    private fun loadGameModeIcon(view: View): Drawable? {
+        gameModeIcon?.let { return it }
+        return runCatching {
+            val moduleContext = view.context.createPackageContext(
+                MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
+            )
+            val resId = moduleContext.resources.getIdentifier("ic_game_mode", "drawable", MODULE_PACKAGE)
+            if (resId == 0) return null
+            moduleContext.getDrawable(resId)?.also { gameModeIcon = it }
+        }.onFailure { Log.w(TAG, "loadGameModeIcon failed", it) }.getOrNull()
     }
 
     private fun resourceEntryName(view: View, resId: Int): String? {
@@ -937,6 +1068,7 @@ object MiLinkServiceHook : HookContext() {
             .putBoolean("game_mode", currentGameMode)
             .putInt("spatial_audio_mode", currentSpatialAudioMode)
             .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
+            .putString(CustomButtonFunction.PREF_KEY, customButtonFunction.preferenceValue)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
@@ -957,6 +1089,11 @@ object MiLinkServiceHook : HookContext() {
         currentGameMode = prefs.getBoolean("game_mode", currentGameMode)
         currentSpatialAudioMode = prefs.getInt("spatial_audio_mode", currentSpatialAudioMode)
             .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+        if (prefs.contains(CustomButtonFunction.PREF_KEY)) {
+            customButtonFunction = CustomButtonFunction.fromPreference(
+                prefs.getString(CustomButtonFunction.PREF_KEY, null)
+            )
+        }
         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
         currentBattery = BatteryParams(
             left = PodParams(

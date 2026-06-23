@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.R
+import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.GameModeImplementation
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.ui.effect.BgEffectBackground
@@ -202,11 +203,18 @@ fun AdvancedSettingsPage(
     onConnectionPopupDismissSecondsChange: (Int) -> Unit = {},
     milinkSpatialAudioOptionEnabled: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED),
-    onMilinkSpatialAudioOptionEnabledChange: (Boolean) -> Unit = {}
+    onMilinkSpatialAudioOptionEnabledChange: (Boolean) -> Unit = {},
+    customButtonFunction: MutableState<CustomButtonFunction> =
+        mutableStateOf(CustomButtonFunction.GAME_MODE),
+    onCustomButtonFunctionChange: (CustomButtonFunction) -> Unit = {}
 ) {
     val rfcommConnectionOptions = listOf(
         stringResource(R.string.rfcomm_connection_method_uuid),
         stringResource(R.string.rfcomm_connection_method_channel)
+    )
+    val customButtonFunctionOptions = listOf(
+        stringResource(R.string.custom_button_function_none),
+        stringResource(R.string.custom_button_function_game_mode)
     )
     val gameModeImplementationOptions = listOf(
         stringResource(R.string.game_mode_implementation_standard),
@@ -233,6 +241,14 @@ fun AdvancedSettingsPage(
     ) {
         item {
             Card {
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.custom_button_function),
+                    items = customButtonFunctionOptions,
+                    selectedIndex = CustomButtonFunction.selectedIndexOf(customButtonFunction.value),
+                    onSelectedIndexChange = {
+                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(it))
+                    }
+                )
                 OverlayDropdownPreference(
                     title = stringResource(R.string.rfcomm_connection_method),
                     items = rfcommConnectionOptions,

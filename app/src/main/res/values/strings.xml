@@ -18,6 +18,9 @@
     <string name="spatial_audio_fixed">Fixed</string>
     <string name="spatial_audio_head_tracking">Head tracking</string>
     <string name="milink_spatial_audio_option">Add spatial audio option to MiLink card</string>
+    <string name="custom_button_function">Custom button</string>
+    <string name="custom_button_function_none">None</string>
+    <string name="custom_button_function_game_mode">Game mode</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
     <string name="adaptive_title">Adaptive</string>
