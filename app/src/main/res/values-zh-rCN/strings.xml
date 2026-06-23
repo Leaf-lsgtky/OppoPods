@@ -22,6 +22,7 @@
     <string name="custom_button_function">自定义按钮</string>
     <string name="custom_button_function_none">无</string>
     <string name="custom_button_function_game_mode">游戏模式</string>
+    <string name="custom_button_function_adaptive">打开自适应模式</string>
     <string name="noise_cancellation_title">降噪</string>
     <string name="transparency_title">通透</string>
     <string name="adaptive_title">自适应</string>

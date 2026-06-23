@@ -214,7 +214,8 @@ fun AdvancedSettingsPage(
     )
     val customButtonFunctionOptions = listOf(
         stringResource(R.string.custom_button_function_none),
-        stringResource(R.string.custom_button_function_game_mode)
+        stringResource(R.string.custom_button_function_game_mode),
+        stringResource(R.string.custom_button_function_adaptive)
     )
     val gameModeImplementationOptions = listOf(
         stringResource(R.string.game_mode_implementation_standard),

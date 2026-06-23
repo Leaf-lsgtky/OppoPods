@@ -21,6 +21,7 @@
     <string name="custom_button_function">Custom button</string>
     <string name="custom_button_function_none">None</string>
     <string name="custom_button_function_game_mode">Game mode</string>
+    <string name="custom_button_function_adaptive">Enable adaptive mode</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
     <string name="adaptive_title">Adaptive</string>

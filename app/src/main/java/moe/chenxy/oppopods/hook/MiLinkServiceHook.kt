@@ -35,6 +35,8 @@ object MiLinkServiceHook : HookContext() {
     private const val GAME_MODE_TITLE = "游戏模式"
     private const val GAME_MODE_SUBTITLE_ON = "已开启"
     private const val GAME_MODE_SUBTITLE_OFF = "已关闭"
+    private const val ADAPTIVE_TITLE = "自适应模式"
+    private const val ANC_ADAPTIVE = 4
     private const val FIND_RING_HIDDEN = -1
     private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
     private val knownOppoAddresses = linkedSetOf<String>()
@@ -95,11 +97,22 @@ object MiLinkServiceHook : HookContext() {
         icon = { view -> loadGameModeIcon(view) },
     )
 
+    // 打开自适应模式：瞬时动作按钮——点击只广播 ACTION_ANC_SELECT(自适应)，
+    // isActive 恒为 false 所以控件永远停在 NORMAL（不高亮），也不显示副标题。
+    private val adaptiveHandler = CustomButtonHandler(
+        isActive = { false },
+        onToggle = { enabled, ctx -> if (enabled) sendOppoAnc(ANC_ADAPTIVE, ctx) },
+        title = { ADAPTIVE_TITLE },
+        subtitle = { null },
+        icon = { null },
+    )
+
     // 返回当前自定义按钮功能对应的 handler；NONE → null（控件隐藏）
     private fun activeHandler(): CustomButtonHandler? {
         loadState()
         return when (customButtonFunction) {
             CustomButtonFunction.GAME_MODE -> gameModeHandler
+            CustomButtonFunction.ADAPTIVE -> adaptiveHandler
             CustomButtonFunction.NONE -> null
         }
     }

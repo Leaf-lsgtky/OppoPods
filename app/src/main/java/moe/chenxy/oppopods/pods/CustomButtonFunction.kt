@@ -4,7 +4,8 @@ package moe.chenxy.oppopods.pods
 // NONE: 不劫持，隐藏该控件；GAME_MODE: 作为游戏模式开关（默认，保持旧行为）。
 enum class CustomButtonFunction(val preferenceValue: String) {
     NONE("none"),
-    GAME_MODE("game_mode");
+    GAME_MODE("game_mode"),
+    ADAPTIVE("adaptive");
 
     companion object {
         const val PREF_KEY = "custom_button_function"
