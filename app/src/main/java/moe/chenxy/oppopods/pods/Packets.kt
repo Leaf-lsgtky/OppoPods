@@ -591,3 +591,43 @@ object BroadcastCodesParser {
         }
     }
 }
+
+/**
+ * 解析智能降噪模式下耳机主动推送的当前自动应用降噪等级通知。
+ *
+ * cmd 0x0204, type 0x03, key 0x04。
+ * bitmap 中 bit 4 = 深度, bit 5 = 中度, bit 6 = 轻度。
+ * 返回 [NoiseLevel] 常量，或 null（非智能等级通知）。
+ */
+object SmartAncLevelParser {
+    fun parse(data: ByteArray): Int? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+        val cmd = (data[4].toInt() and 0xFF) or ((data[5].toInt() and 0xFF) shl 8)
+        if (cmd != Cmd.ANC_MODE_NOTIFY) return null
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+        if (data.size < payloadStart + payLen || payLen < 4) return null
+        if ((data[payloadStart].toInt() and 0xFF) != 0x03) return null
+        if ((data[payloadStart + 1].toInt() and 0xFF) != 0x04) return null
+        if ((data[payloadStart + 2].toInt() and 0xFF) != 0x01) return null
+
+        val bitmapStart = payloadStart + 3
+        val bitmapEnd = payloadStart + payLen
+        for (i in bitmapStart until bitmapEnd) {
+            val b = data[i].toInt() and 0xFF
+            if (b == 0) continue
+            for (n in 0..7) {
+                if ((b and (1 shl n)) == 0) continue
+                val bit = (i - bitmapStart) * 8 + n
+                return when (bit) {
+                    4 -> NoiseLevel.DEEP
+                    5 -> NoiseLevel.MEDIUM
+                    6 -> NoiseLevel.LIGHT
+                    else -> null
+                }
+            }
+        }
+        return null
+    }
+}

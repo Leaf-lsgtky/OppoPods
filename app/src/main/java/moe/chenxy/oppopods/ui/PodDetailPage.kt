@@ -43,12 +43,22 @@ fun PodDetailPage(
     gameModeVisible: Boolean = true,
     noiseLevelVisible: Boolean = false,
     noiseLevel: Int = NoiseLevel.DEEP,
+    smartAncLevel: Int = -1,
     onNoiseLevelChange: (Int) -> Unit = {},
     homeImageFile: java.io.File? = null,
     onOpenMoreSettings: () -> Unit = {}
 ) {
+    val smartLevelName = if (noiseLevel == NoiseLevel.SMART) {
+        when (smartAncLevel) {
+            NoiseLevel.LIGHT -> stringResource(R.string.noise_level_light)
+            NoiseLevel.MEDIUM -> stringResource(R.string.noise_level_medium)
+            NoiseLevel.DEEP -> stringResource(R.string.noise_level_deep)
+            else -> null
+        }
+    } else null
+    val smartLabel = stringResource(R.string.noise_level_smart)
     val noiseLevelOptions = listOf(
-        stringResource(R.string.noise_level_smart),
+        if (smartLevelName != null) "$smartLabel：$smartLevelName" else smartLabel,
         stringResource(R.string.noise_level_light),
         stringResource(R.string.noise_level_medium),
         stringResource(R.string.noise_level_deep)
@@ -123,7 +133,7 @@ fun PodDetailPage(
         if (noiseLevelVisible && ancMode == NoiseControlMode.NOISE_CANCELLATION) {
             item {
                 Card(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
                 ) {
                     OverlayDropdownPreference(
                         title = stringResource(R.string.noise_level_title),

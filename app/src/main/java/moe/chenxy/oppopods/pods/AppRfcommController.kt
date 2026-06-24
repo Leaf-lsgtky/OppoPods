@@ -62,6 +62,9 @@ class AppRfcommController {
     private val _noiseLevel = MutableStateFlow(NoiseLevel.DEEP)
     val noiseLevel: StateFlow<Int> = _noiseLevel
 
+    private val _smartAncLevel = MutableStateFlow(-1)
+    val smartAncLevel: StateFlow<Int> = _smartAncLevel
+
     private val _autoPlayPause = MutableStateFlow(false)
     val autoPlayPause: StateFlow<Boolean> = _autoPlayPause
 
@@ -203,6 +206,13 @@ class AppRfcommController {
             if (ancResult.noiseLevel != null) {
                 _noiseLevel.value = ancResult.noiseLevel
             }
+            return
+        }
+
+        val smartLevel = SmartAncLevelParser.parse(packet)
+        if (smartLevel != null) {
+            Log.d(TAG, "Smart ANC current level: $smartLevel")
+            _smartAncLevel.value = smartLevel
             return
         }
 
@@ -351,6 +361,7 @@ class AppRfcommController {
         _gameMode.value = false
         _spatialAudioMode.value = SpatialAudioMode.OFF
         _noiseLevel.value = NoiseLevel.DEEP
+        _smartAncLevel.value = -1
         _autoPlayPause.value = false
         _dualDevice.value = false
         _connectedDevices.value = emptyList()

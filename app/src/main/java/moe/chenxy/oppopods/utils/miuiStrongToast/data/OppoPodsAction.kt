@@ -16,6 +16,7 @@ object OppoPodsAction {
     const val ACTION_PODS_SPATIAL_AUDIO_CHANGED = "chen.action.oppopods.pods_spatial_audio_changed"
     const val ACTION_NOISE_LEVEL_SET = "chen.action.oppopods.noise_level_set"
     const val ACTION_PODS_NOISE_LEVEL_CHANGED = "chen.action.oppopods.pods_noise_level_changed"
+    const val ACTION_PODS_SMART_ANC_LEVEL_CHANGED = "chen.action.oppopods.pods_smart_anc_level_changed"
     const val ACTION_AUTO_PLAY_PAUSE_SET = "chen.action.oppopods.auto_play_pause_set"
     const val ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED = "chen.action.oppopods.pods_auto_play_pause_changed"
     const val ACTION_DUAL_DEVICE_SET = "chen.action.oppopods.dual_device_set"

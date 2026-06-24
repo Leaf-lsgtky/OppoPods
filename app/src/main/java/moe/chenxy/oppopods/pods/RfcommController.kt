@@ -66,6 +66,9 @@ object RfcommController {
     private var currentGameMode: Boolean = false
     private var currentSpatialAudioMode: Int = SpatialAudioMode.OFF
     private var currentNoiseLevel: Int = NoiseLevel.DEEP
+    /** -1 = unknown / not in smart mode; otherwise a [NoiseLevel] constant of the
+     *  level smart mode is currently auto-applying (LIGHT/MEDIUM/DEEP). */
+    private var currentSmartAncLevel: Int = -1
     private var currentAutoPlayPause: Boolean = false
     private var currentDualDevice: Boolean = false
     private var currentConnectedDevices: List<ConnectedDevice> = emptyList()
@@ -159,6 +162,15 @@ object RfcommController {
         }
         sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED) {
             putExtra("level", level)
+        }
+    }
+
+    private fun changeUISmartAncLevel(level: Int) {
+        Intent(OppoPodsAction.ACTION_PODS_SMART_ANC_LEVEL_CHANGED).apply {
+            this.putExtra("level", level)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
         }
     }
 
@@ -283,6 +295,7 @@ object RfcommController {
                 changeUIGameModeStatus(currentGameMode)
                 changeUISpatialAudioStatus(currentSpatialAudioMode)
                 changeUINoiseLevelStatus(currentNoiseLevel)
+                changeUISmartAncLevel(currentSmartAncLevel)
                 changeUIAutoPlayPauseStatus(currentAutoPlayPause)
                 changeUIDualDeviceStatus(currentDualDevice)
                 changeUIConnectedDevicesStatus(currentConnectedDevices)
@@ -767,6 +780,17 @@ object RfcommController {
                 changeUINoiseLevelStatus(ancResult.noiseLevel)
             }
             changeUIAncStatus(currentAnc)
+            return
+        }
+
+        // Smart-mode current noise-reduction level (cmd 0x0204 type 03 key 04)
+        val smartLevel = SmartAncLevelParser.parse(packet)
+        if (smartLevel != null) {
+            Log.d(TAG, "Smart ANC current level: $smartLevel")
+            if (smartLevel != currentSmartAncLevel) {
+                currentSmartAncLevel = smartLevel
+                changeUISmartAncLevel(smartLevel)
+            }
             return
         }
 

@@ -103,6 +103,7 @@ fun MainUI(
     val gameMode = remember { mutableStateOf(false) }
     val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
     val noiseLevel = remember { mutableStateOf(moe.chenxy.oppopods.pods.NoiseLevel.DEEP) }
+    val smartAncLevel = remember { mutableStateOf(-1) }
     val autoPlayPause = remember { mutableStateOf(false) }
     val dualDevice = remember { mutableStateOf(false) }
     val hookConnectedDevices = remember { mutableStateOf<List<moe.chenxy.oppopods.pods.ConnectedDevice>>(emptyList()) }
@@ -189,6 +190,7 @@ fun MainUI(
     val appGameMode by appController.gameMode.collectAsState()
     val appSpatialAudioMode by appController.spatialAudioMode.collectAsState()
     val appNoiseLevel by appController.noiseLevel.collectAsState()
+    val appSmartAncLevel by appController.smartAncLevel.collectAsState()
     val appAutoPlayPause by appController.autoPlayPause.collectAsState()
     val appDualDevice by appController.dualDevice.collectAsState()
     val appConnectedDevices by appController.connectedDevices.collectAsState()
@@ -204,6 +206,7 @@ fun MainUI(
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
     val displaySpatialAudioMode = if (isStandaloneConnected) appSpatialAudioMode else spatialAudioMode.value
     val displayNoiseLevel = if (isStandaloneConnected) appNoiseLevel else noiseLevel.value
+    val displaySmartAncLevel = if (isStandaloneConnected) appSmartAncLevel else smartAncLevel.value
     val displayAutoPlayPause = if (isStandaloneConnected) appAutoPlayPause else autoPlayPause.value
     val displayDualDevice = if (isStandaloneConnected) appDualDevice else dualDevice.value
     val displayConnectedDevices = if (isStandaloneConnected) appConnectedDevices else hookConnectedDevices.value
@@ -255,6 +258,10 @@ fun MainUI(
                         noiseLevel.value = p1.getIntExtra("level", moe.chenxy.oppopods.pods.NoiseLevel.DEEP)
                     }
 
+                    OppoPodsAction.ACTION_PODS_SMART_ANC_LEVEL_CHANGED -> {
+                        smartAncLevel.value = p1.getIntExtra("level", -1)
+                    }
+
                     OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED -> {
                         autoPlayPause.value = p1.getBooleanExtra("enabled", false)
                     }
@@ -303,6 +310,7 @@ fun MainUI(
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_SMART_ANC_LEVEL_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_DUAL_DEVICE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED_DEVICES_CHANGED)
@@ -555,6 +563,7 @@ fun MainUI(
                             gameModeVisible = activeProfile.value.gameModeVisible,
                             noiseLevelVisible = activeProfile.value.noiseLevelVisible,
                             noiseLevel = displayNoiseLevel,
+                            smartAncLevel = displaySmartAncLevel,
                             onNoiseLevelChange = { setNoiseLevel(it) },
                             homeImageFile = ProfileAssets.file(context, activeProfile.value, AssetKeys.HOME_IMAGE),
                             onOpenMoreSettings = { backStack.add(Screen.MoreSettings) }
