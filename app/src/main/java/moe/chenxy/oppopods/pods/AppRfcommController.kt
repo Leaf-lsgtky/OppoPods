@@ -36,7 +36,7 @@ class AppRfcommController {
 
     private var socket: BluetoothSocket? = null
     private var isConnected = false
-    private var gameModeImplementation = GameModeImplementation.STANDARD
+    private lateinit var profile: DeviceProfile
     private var lastGameModeStatusUpdateMs = 0L
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var batteryPollJob: Job? = null
@@ -59,14 +59,18 @@ class AppRfcommController {
     private val _spatialAudioMode = MutableStateFlow(SpatialAudioMode.OFF)
     val spatialAudioMode: StateFlow<Int> = _spatialAudioMode
 
+    fun setProfile(profile: DeviceProfile) {
+        this.profile = profile
+    }
+
     fun connect(
         device: BluetoothDevice,
         connectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID,
-        gameModeImplementation: GameModeImplementation = GameModeImplementation.STANDARD
+        profile: DeviceProfile
     ) {
         if (_connectionState.value == ConnectionState.CONNECTING) return
 
-        this.gameModeImplementation = gameModeImplementation
+        this.profile = profile
         _deviceName.value = device.name ?: device.address
         _connectionState.value = ConnectionState.CONNECTING
         batteryPollJob?.cancel()
@@ -181,7 +185,7 @@ class AppRfcommController {
         }
 
         // Try parse as batch query response for game mode (Cmd=0x810D)
-        val gameModeResult = GameModeParser.parse(packet, gameModeImplementation)
+        val gameModeResult = GameModeParser.parseForFeature(packet, profile.gameModeFeatureId())
         if (gameModeResult != null) {
             Log.d(TAG, "Game mode received: $gameModeResult")
             lastGameModeStatusUpdateMs = SystemClock.elapsedRealtime()
@@ -226,22 +230,18 @@ class AppRfcommController {
     fun setSpatialAudioMode(mode: Int) {
         val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
         _spatialAudioMode.value = normalizedMode
-        scope.launch { sendPacket(Enums.spatialAudioPacket(normalizedMode)) }
-    }
-
-    fun setGameModeImplementation(implementation: GameModeImplementation) {
-        gameModeImplementation = implementation
+        scope.launch { sendPacket(profile.spatialPacket(normalizedMode)) }
     }
 
     fun setANCMode(mode: NoiseControlMode) {
-        val packet = when (mode) {
-            NoiseControlMode.OFF -> Enums.ANC_OFF
-            NoiseControlMode.NOISE_CANCELLATION -> Enums.ANC_NOISE_CANCEL
-            NoiseControlMode.ADAPTIVE -> Enums.ANC_ADAPTIVE
-            NoiseControlMode.TRANSPARENCY -> Enums.ANC_TRANSPARENCY
+        val ancInt = when (mode) {
+            NoiseControlMode.OFF -> 1
+            NoiseControlMode.NOISE_CANCELLATION -> 2
+            NoiseControlMode.TRANSPARENCY -> 3
+            NoiseControlMode.ADAPTIVE -> 4
         }
         _ancMode.value = mode
-        scope.launch { sendPacket(packet) }
+        scope.launch { sendPacket(profile.ancPacket(ancInt)) }
     }
 
     /**
@@ -249,16 +249,16 @@ class AppRfcommController {
      */
     private fun queryStatus() {
         scope.launch {
-            sendPacket(Enums.QUERY_STATUS)
+            sendPacket(profile.packet(ProfileKeys.QUERY_STATUS))
             delay(50)
-            sendPacket(Enums.QUERY_BATTERY)
+            sendPacket(profile.packet(ProfileKeys.QUERY_BATTERY))
             delay(50)
-            sendPacket(Enums.QUERY_ANC)
+            sendPacket(profile.packet(ProfileKeys.QUERY_ANC))
         }
     }
 
     private suspend fun sendGameModePackets(enabled: Boolean) {
-        Enums.gameModePackets(enabled, gameModeImplementation).forEachIndexed { index, packet ->
+        profile.gameModePackets(enabled).forEachIndexed { index, packet ->
             if (index > 0) delay(120)
             sendPacket(packet)
         }

@@ -22,6 +22,14 @@
     <string name="custom_button_function_none">None</string>
     <string name="custom_button_function_game_mode">Game mode</string>
     <string name="custom_button_function_adaptive">Enable adaptive mode</string>
+    <string name="device_profiles">Device profiles</string>
+    <string name="profiles_import">Import profile</string>
+    <string name="profiles_export">Export current profile</string>
+    <string name="profiles_in_use">In use</string>
+    <string name="profiles_delete">Delete</string>
+    <string name="profiles_import_failed">Import failed: invalid profile file</string>
+    <string name="profiles_restore_defaults">Restore default profiles</string>
+    <string name="profiles_restore_confirm">Restore all built-in profiles to defaults? Custom profiles will be preserved.</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
     <string name="adaptive_title">Adaptive</string>

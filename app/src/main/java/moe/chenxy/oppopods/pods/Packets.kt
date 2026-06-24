@@ -135,86 +135,6 @@ object Cmd {
     const val SPATIAL_AUDIO_NOTIFY = 0x0510
 }
 
-/** Pre-built packets. */
-object Enums {
-    /** Switch to Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 02 */
-    val ANC_NOISE_CANCEL: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION.toByte())
-    )
-
-    /** Switch to Transparency: AA 0A 00 00 04 04 00 03 00 01 01 04 */
-    val ANC_TRANSPARENCY: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.TRANSPARENCY.toByte())
-    )
-
-    /** Switch to Off: AA 0A 00 00 04 04 00 03 00 01 01 01 */
-    val ANC_OFF: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.OFF.toByte())
-    )
-
-    /** Switch to Adaptive: AA 0B 00 00 04 04 00 04 00 01 01 00 08 */
-    val ANC_ADAPTIVE: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.ADAPTIVE_HIGH.toByte(), AncMode.ADAPTIVE_LOW.toByte())
-    )
-
-    /** Query battery: AA 07 00 00 06 01 F0 00 00 */
-    val QUERY_BATTERY: ByteArray = byteArrayOf(
-        0xAA.toByte(), 0x07, 0x00, 0x00, 0x06, 0x01, 0xF0.toByte(), 0x00, 0x00
-    )
-
-    /** Query ANC mode: AA 09 00 00 0C 01 00 02 00 01 01 */
-    val QUERY_ANC: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.QUERY_ANC_MODE, payload = byteArrayOf(0x01, 0x01)
-    )
-
-    /** Enable game mode main switch: AA 09 00 00 03 04 00 02 00 28 01 */
-    val GAME_MODE_ON: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(GameModeFeature.MAIN.toByte(), 0x01)
-    )
-
-    /** Disable game mode main switch: AA 09 00 00 03 04 00 02 00 28 00 */
-    val GAME_MODE_OFF: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(GameModeFeature.MAIN.toByte(), 0x00)
-    )
-
-    /** Enable low-latency game mode: AA 09 00 00 03 04 00 02 00 06 01 */
-    val GAME_LOW_LATENCY_ON: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(GameModeFeature.LOW_LATENCY.toByte(), 0x01)
-    )
-
-    /** Disable low-latency game mode: AA 09 00 00 03 04 00 02 00 06 00 */
-    val GAME_LOW_LATENCY_OFF: ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_GAME_MODE, payload = byteArrayOf(GameModeFeature.LOW_LATENCY.toByte(), 0x00)
-    )
-
-    fun gameModePackets(enabled: Boolean, implementation: GameModeImplementation): List<ByteArray> {
-        return when (implementation) {
-            GameModeImplementation.STANDARD -> listOf(if (enabled) GAME_MODE_ON else GAME_MODE_OFF)
-            GameModeImplementation.COMPATIBLE -> if (enabled) {
-                listOf(GAME_MODE_ON, GAME_LOW_LATENCY_ON)
-            } else {
-                listOf(GAME_LOW_LATENCY_OFF, GAME_MODE_OFF)
-            }
-        }
-    }
-
-    /** Set spatial audio: AA 08 00 00 22 04 F0 01 00 [mode]. */
-    fun spatialAudioPacket(mode: Int): ByteArray = OppoPackets.buildPacket(
-        cmd = Cmd.SET_SPATIAL_AUDIO,
-        payload = byteArrayOf(mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING).toByte())
-    )
-
-    /**
-     * Batch parameter query (fixed hex blob).
-     * Cmd=0x010D, contains multiple param IDs including 0x28 (game mode).
-     * Has built-in wake weight, no need for preceding 0x0106.
-     */
-    val QUERY_STATUS: ByteArray = byteArrayOf(
-        0xAA.toByte(), 0x13, 0x00, 0x00, 0x0D, 0x01, 0x00, 0x0C, 0x00,
-        0x0B, 0x05, 0x04, 0x0B, 0x11, 0x13, 0x18, 0x06, 0x1B, 0x1C, 0x27, 0x28
-    )
-}
-
 /**
  * Parser for OPPO earphone battery response packets.
  *
@@ -392,17 +312,14 @@ object GameModeParser {
     data class Status(
         val mainEnabled: Boolean?,
         val lowLatencyEnabled: Boolean?
-    ) {
-        fun enabledFor(implementation: GameModeImplementation): Boolean? {
-            return when (implementation) {
-                GameModeImplementation.STANDARD -> mainEnabled
-                GameModeImplementation.COMPATIBLE -> lowLatencyEnabled ?: mainEnabled
-            }
-        }
-    }
+    )
 
-    fun parse(data: ByteArray, implementation: GameModeImplementation = GameModeImplementation.STANDARD): Boolean? {
-        return parseStatus(data)?.enabledFor(implementation)
+    fun parseForFeature(data: ByteArray, featureId: Int): Boolean? {
+        val status = parseStatus(data) ?: return null
+        return when (featureId) {
+            GameModeFeature.LOW_LATENCY -> status.lowLatencyEnabled
+            else -> status.mainEnabled
+        }
     }
 
     fun parseStatus(data: ByteArray): Status? {

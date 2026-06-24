@@ -15,6 +15,7 @@ import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.util.Log
 import com.xzakota.hyper.notification.focus.FocusNotification
+import moe.chenxy.oppopods.pods.DeviceProfileStore
 import moe.chenxy.oppopods.utils.FocusIslandUtil
 import moe.chenxy.oppopods.utils.SystemApisUtils
 import moe.chenxy.oppopods.utils.SystemApisUtils.cancelAsUser
@@ -379,7 +380,11 @@ object MiBluetoothToastHook : HookContext() {
                                     "batteryParams",
                                     BatteryParams::class.java
                                 ) ?: return
-                                FocusIslandUtil.showBatteryIsland(context, batteryParams)
+                                FocusIslandUtil.showBatteryIsland(
+                                    context,
+                                    batteryParams,
+                                    runCatching { DeviceProfileStore.activeProfile(prefs) }.getOrNull()
+                                )
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)
                                 val device = p1.getParcelableExtra("device", BluetoothDevice::class.java)
@@ -406,14 +411,6 @@ object MiBluetoothToastHook : HookContext() {
                             } else if (p1?.action == OppoPodsAction.ACTION_PODS_ANC_CHANGED) {
                                 // 同步耳机实际 ANC 状态到本地缓存，确保下次循环切换时状态准确
                                 localAncMode = p1.getIntExtra("status", 1)
-                            } else if (p1?.action == OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED) {
-                                // 接收来自 App 端设置页面的 Adaptive 模式开关状态变更，无需本地动作
-                                // cycle ANC 时通过 prefs bridge 实时读取偏好，此广播仅确保通知已送达
-                                val adaptiveEnabled = p1.getBooleanExtra("enabled", true)
-                                // 若关闭 Adaptive 且本地缓存的当前模式为 Adaptive，重置为降噪模式
-                                if (!adaptiveEnabled && localAncMode == 4) {
-                                    localAncMode = 2
-                                }
                             } else if (p1?.action == OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED) {
                                 syncNotificationSettings(context, p1)
                                 val lastDevice = lastNotificationDevice
@@ -434,9 +431,9 @@ object MiBluetoothToastHook : HookContext() {
                                     )
                                 }
                             } else if (p1?.action == OppoPodsAction.ACTION_CYCLE_ANC) {
-                                // 循环切换降噪模式：读取Adaptive模式偏好，关闭时跳过Adaptive仅三模式循环
-                                // 使用 prefs bridge 读取与 App 端同一 SharedPreferences 文件，确保状态同步
-                                val adaptiveEnabled = prefs.getBoolean("adaptive_mode", true)
+                                // 循环切换降噪模式：读取 profile 的 adaptiveVisible，关闭时跳过自适应仅三模式循环
+                                val profile = runCatching { DeviceProfileStore.activeProfile(prefs) }.getOrNull()
+                                val adaptiveEnabled = profile?.adaptiveVisible ?: false
                                 localAncMode = when (localAncMode) {
                                     2 -> if (adaptiveEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
                                     4 -> 3  // Adaptive → Transparency
@@ -459,8 +456,6 @@ object MiBluetoothToastHook : HookContext() {
                     intentFilter.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
                     // 监听耳机实际 ANC 状态变更广播，保持 localAncMode 与 RfcommController 同步
                     intentFilter.addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
-                    // 监听 Adaptive 模式开关状态变更广播，确保跨进程实时同步
-                    intentFilter.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
                     intentFilter.addAction(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED)
                     context.registerReceiver(broadcastReceiver, intentFilter,
                         Context.RECEIVER_EXPORTED)

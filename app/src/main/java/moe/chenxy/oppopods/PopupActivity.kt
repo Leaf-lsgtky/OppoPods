@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import moe.chenxy.oppopods.pods.DeviceProfileStore
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.ui.AppTheme
 import moe.chenxy.oppopods.ui.components.AncSwitch
@@ -84,8 +85,9 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
 
     val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
     val themeMode = remember { prefs.getInt("theme_mode", 0) }
-    // 读取Adaptive模式偏好设置
-    val adaptiveModeEnabled = remember { prefs.getBoolean("adaptive_mode", true) }
+    val adaptiveModeEnabled = remember {
+        runCatching { DeviceProfileStore.activeProfile(prefs).adaptiveVisible }.getOrDefault(false)
+    }
     val systemDark = isSystemInDarkTheme()
     val isDarkMode = when (themeMode) {
         1 -> false

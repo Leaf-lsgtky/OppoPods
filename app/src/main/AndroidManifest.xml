@@ -43,6 +43,12 @@
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:exported="true" />
+        <!-- 跨进程供图：被 hook 的系统进程读取当前配置档的岛图/通知图 -->
+        <provider
+            android:name=".pods.ProfileAssetProvider"
+            android:authorities="moe.chenxy.oppopods.assets"
+            android:exported="true" />
+
         <!-- Set as Xposed Module -->
         <meta-data
             android:name="xposedmodule"

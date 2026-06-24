@@ -65,11 +65,10 @@ object RfcommController {
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
     private var currentSpatialAudioMode: Int = SpatialAudioMode.OFF
-    private var gameModeImplementation: GameModeImplementation = GameModeImplementation.STANDARD
+    @Volatile
+    private lateinit var activeProfile: DeviceProfile
     private var rfcommConnectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID
     private var lastGameModeStatusUpdateMs: Long = 0L
-    // Adaptive模式状态缓存，通过广播同步确保跨进程实时一致，避免 SharedPreferences 跨进程缓存导致读取过时值
-    private var adaptiveModeEnabled: Boolean = true
     private var notificationSettings: NotificationSettings = NotificationSettings()
     private val showConnectionBatteryIslandEnabled: Boolean
         get() = notificationSettings.showConnectionBatteryIsland
@@ -247,26 +246,19 @@ object RfcommController {
                 val mode = intent.getIntExtra("mode", SpatialAudioMode.OFF)
                 setSpatialAudioMode(mode)
             }
-            OppoPodsAction.ACTION_GAME_MODE_IMPLEMENTATION_CHANGED -> {
-                gameModeImplementation = GameModeImplementation.fromPreference(
-                    intent.getStringExtra(GameModeImplementation.PREF_KEY)
-                )
-                Log.d(TAG, "Game mode implementation synced: ${gameModeImplementation.preferenceValue}")
-            }
             OppoPodsAction.ACTION_CYCLE_ANC -> {
                 cycleAnc()
             }
-            OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED -> {
-                // 跨进程同步 Adaptive 模式开关状态，确保 cycleAnc() 使用实时值
-                adaptiveModeEnabled = intent.getBooleanExtra("enabled", true)
-                Log.d(TAG, "Adaptive mode synced: $adaptiveModeEnabled")
-                // 若关闭 Adaptive 且当前处于 Adaptive 模式，自动切换至降噪模式
-                if (!adaptiveModeEnabled && currentAnc == 4) {
-                    setANCMode(2)
-                }
-            }
             OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED -> {
                 syncNotificationSettings(receiverContext ?: mContext, intent, refreshNotification = true)
+            }
+            OppoPodsAction.ACTION_ACTIVE_PROFILE_CHANGED -> {
+                val jsonStr = intent.getStringExtra(OppoPodsAction.EXTRA_PROFILE_JSON)
+                activeProfile = runCatching {
+                    if (jsonStr != null) DeviceProfileStore.parse(jsonStr)
+                    else DeviceProfileStore.activeProfile(mPrefs)
+                }.getOrDefault(activeProfile)
+                Log.d(TAG, "Active device profile synced: ${activeProfile.name} (${activeProfile.id})")
             }
         }
     }
@@ -435,22 +427,17 @@ object RfcommController {
         mPrefs = prefs
         cachedDeviceName = device.name ?: ""
         reloadPrefs()
-        // 初始化 Adaptive 模式状态缓存，从 SharedPreferences 读取当前值
-        adaptiveModeEnabled = mPrefs.getBoolean("adaptive_mode", true)
-        gameModeImplementation = GameModeImplementation.fromPreference(
-            mPrefs.getString(GameModeImplementation.PREF_KEY, null)
-        )
+        activeProfile = DeviceProfileStore.activeProfile(mPrefs)
+        Log.d(TAG, "Active device profile: ${activeProfile.name} (${activeProfile.id})")
         notificationSettings = loadNotificationSettings(context)
         cacheNotificationSettings(context, notificationSettings)
         rfcommConnectionMethod = RfcommConnectionMethod.fromPreference(
             mPrefs.getString(RfcommConnectionMethod.PREF_KEY, null)
         )
-        Log.d(TAG, "Adaptive mode initial: $adaptiveModeEnabled")
         Log.d(
             TAG,
             "Notification settings initial: batteryIsland=$showConnectionBatteryIslandEnabled, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled"
         )
-        Log.d(TAG, "Game mode implementation initial: ${gameModeImplementation.preferenceValue}")
         Log.d(TAG, "RFCOMM connection method initial: ${rfcommConnectionMethod.preferenceValue}")
 
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
@@ -459,10 +446,9 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
             this.addAction(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET)
-            this.addAction(OppoPodsAction.ACTION_GAME_MODE_IMPLEMENTATION_CHANGED)
             this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
-            this.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
             this.addAction(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED)
+            this.addAction(OppoPodsAction.ACTION_ACTIVE_PROFILE_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
@@ -693,7 +679,7 @@ object RfcommController {
         }
 
         // Try parse as batch query response for game mode (Cmd=0x810D)
-        val gameModeResult = GameModeParser.parse(packet, gameModeImplementation)
+        val gameModeResult = GameModeParser.parseForFeature(packet, activeProfile.gameModeFeatureId())
         if (gameModeResult != null) {
             Log.d(TAG, "Game mode received: $gameModeResult")
             lastGameModeStatusUpdateMs = SystemClock.elapsedRealtime()
@@ -812,14 +798,13 @@ object RfcommController {
         currentSpatialAudioMode = normalizedMode
         changeUISpatialAudioStatus(normalizedMode)
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(Enums.spatialAudioPacket(normalizedMode), "set spatial audio mode")
+            sendPacketSafe(activeProfile.spatialPacket(normalizedMode), "set spatial audio mode")
         }
     }
 
     fun cycleAnc() {
-        // 使用广播同步的缓存值，避免 SharedPreferences 跨进程缓存导致读取过时值
         val next = when (currentAnc) {
-            2 -> if (adaptiveModeEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
+            2 -> if (activeProfile.adaptiveVisible) 4 else 3  // NC → Adaptive（若启用）或 Transparency
             4 -> 3  // Adaptive → Transparency
             3 -> 1  // Transparency → OFF
             else -> 2  // OFF or unknown → NC
@@ -830,13 +815,8 @@ object RfcommController {
     fun setANCMode(mode: Int) {
         Log.d(TAG, "setANCMode: $mode")
         currentAnc = mode  // 乐观更新，与 AppRfcommController 保持一致
-        val packet = when (mode) {
-            1 -> Enums.ANC_OFF
-            2 -> Enums.ANC_NOISE_CANCEL
-            3 -> Enums.ANC_TRANSPARENCY
-            4 -> Enums.ANC_ADAPTIVE
-            else -> return
-        }
+        if (mode !in 1..4) return
+        val packet = activeProfile.ancPacket(mode)
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(packet, "set ANC mode")
         }
@@ -844,23 +824,23 @@ object RfcommController {
 
     fun queryBattery(allowReconnect: Boolean = false) {
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(Enums.QUERY_BATTERY, "query battery", allowReconnect)
+            sendPacketSafe(activeProfile.packet(ProfileKeys.QUERY_BATTERY), "query battery", allowReconnect)
         }
     }
 
     private suspend fun sendGameModePackets(enabled: Boolean) {
-        for ((index, packet) in Enums.gameModePackets(enabled, gameModeImplementation).withIndex()) {
+        for ((index, packet) in activeProfile.gameModePackets(enabled).withIndex()) {
             if (index > 0) delay(120)
             if (!sendPacketSafe(packet, "set game mode")) return
         }
     }
 
     private suspend fun sendStatusQueryPackets(allowReconnect: Boolean = false) {
-        if (!sendPacketSafe(Enums.QUERY_STATUS, "query status", allowReconnect)) return
+        if (!sendPacketSafe(activeProfile.packet(ProfileKeys.QUERY_STATUS), "query status", allowReconnect)) return
         delay(50)
-        if (!sendPacketSafe(Enums.QUERY_BATTERY, "query battery", allowReconnect)) return
+        if (!sendPacketSafe(activeProfile.packet(ProfileKeys.QUERY_BATTERY), "query battery", allowReconnect)) return
         delay(50)
-        sendPacketSafe(Enums.QUERY_ANC, "query ANC", allowReconnect)
+        sendPacketSafe(activeProfile.packet(ProfileKeys.QUERY_ANC), "query ANC", allowReconnect)
     }
 
     /**

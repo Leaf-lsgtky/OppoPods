@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.CustomButtonFunction
-import moe.chenxy.oppopods.pods.GameModeImplementation
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.ui.effect.BgEffectBackground
 import moe.chenxy.oppopods.ui.effect.ColorBlendToken
@@ -99,8 +98,6 @@ fun SettingsPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     themeMode: MutableState<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
-    adaptiveMode: MutableState<Boolean> = mutableStateOf(true),
-    onAdaptiveModeChange: (Boolean) -> Unit = {},
     showConnectionBatteryIsland: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND),
     onShowConnectionBatteryIslandChange: (Boolean) -> Unit = {},
@@ -111,7 +108,8 @@ fun SettingsPage(
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_NOTIFICATION_ISLAND_STYLE),
     onNotificationIslandStyleChange: (Boolean) -> Unit = {},
     onOpenAdvancedSettings: () -> Unit = {},
-    onOpenAbout: () -> Unit = {}
+    onOpenAbout: () -> Unit = {},
+    onOpenProfiles: () -> Unit = {}
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -143,12 +141,6 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 SwitchPreference(
-                    title = stringResource(R.string.adaptive_mode),
-                    summary = stringResource(R.string.adaptive_mode_summary),
-                    checked = adaptiveMode.value,
-                    onCheckedChange = { onAdaptiveModeChange(it) }
-                )
-                SwitchPreference(
                     title = stringResource(R.string.show_connection_battery_island),
                     summary = stringResource(R.string.show_connection_battery_island_summary),
                     checked = showConnectionBatteryIsland.value,
@@ -173,6 +165,10 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 ArrowPreference(
+                    title = stringResource(R.string.device_profiles),
+                    onClick = onOpenProfiles
+                )
+                ArrowPreference(
                     title = stringResource(R.string.advanced_settings),
                     onClick = onOpenAdvancedSettings
                 )
@@ -193,8 +189,7 @@ fun AdvancedSettingsPage(
     onOpenHeyTapChange: (Boolean) -> Unit = {},
     rfcommConnectionMethod: MutableState<RfcommConnectionMethod> = mutableStateOf(RfcommConnectionMethod.UUID),
     onRfcommConnectionMethodChange: (RfcommConnectionMethod) -> Unit = {},
-    gameModeImplementation: MutableState<GameModeImplementation> = mutableStateOf(GameModeImplementation.STANDARD),
-    onGameModeImplementationChange: (GameModeImplementation) -> Unit = {},
+    adaptiveVisible: Boolean = true,
     showConnectionPopup: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_POPUP),
     onShowConnectionPopupChange: (Boolean) -> Unit = {},
@@ -212,15 +207,12 @@ fun AdvancedSettingsPage(
         stringResource(R.string.rfcomm_connection_method_uuid),
         stringResource(R.string.rfcomm_connection_method_channel)
     )
-    val customButtonFunctionOptions = listOf(
+    val customButtonFunctionOptions = mutableListOf(
         stringResource(R.string.custom_button_function_none),
-        stringResource(R.string.custom_button_function_game_mode),
-        stringResource(R.string.custom_button_function_adaptive)
-    )
-    val gameModeImplementationOptions = listOf(
-        stringResource(R.string.game_mode_implementation_standard),
-        stringResource(R.string.game_mode_implementation_compatible)
-    )
+        stringResource(R.string.custom_button_function_game_mode)
+    ).apply {
+        if (adaptiveVisible) add(stringResource(R.string.custom_button_function_adaptive))
+    }
     val popupDismissSecondOptions = OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS
     val popupDismissSecondLabels = popupDismissSecondOptions.map {
         stringResource(R.string.connection_popup_duration_seconds, it)
@@ -245,9 +237,14 @@ fun AdvancedSettingsPage(
                 OverlayDropdownPreference(
                     title = stringResource(R.string.custom_button_function),
                     items = customButtonFunctionOptions,
-                    selectedIndex = CustomButtonFunction.selectedIndexOf(customButtonFunction.value),
-                    onSelectedIndexChange = {
-                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(it))
+                    selectedIndex = if (adaptiveVisible) {
+                        CustomButtonFunction.selectedIndexOf(customButtonFunction.value)
+                    } else {
+                        CustomButtonFunction.selectedIndexOf(customButtonFunction.value).coerceAtMost(1)
+                    },
+                    onSelectedIndexChange = { index ->
+                        val mapped = if (!adaptiveVisible && index >= 1) index + 1 else index
+                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(mapped))
                     }
                 )
                 OverlayDropdownPreference(
@@ -256,14 +253,6 @@ fun AdvancedSettingsPage(
                     selectedIndex = RfcommConnectionMethod.selectedIndexOf(rfcommConnectionMethod.value),
                     onSelectedIndexChange = {
                         onRfcommConnectionMethodChange(RfcommConnectionMethod.fromSelectedIndex(it))
-                    }
-                )
-                OverlayDropdownPreference(
-                    title = stringResource(R.string.game_mode_implementation),
-                    items = gameModeImplementationOptions,
-                    selectedIndex = GameModeImplementation.selectedIndexOf(gameModeImplementation.value),
-                    onSelectedIndexChange = {
-                        onGameModeImplementationChange(GameModeImplementation.fromSelectedIndex(it))
                     }
                 )
                 SwitchPreference(

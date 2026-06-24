@@ -11,6 +11,8 @@ object OppoPodsPrefsKey {
     const val NOTIFICATION_SETTINGS_UPDATED_AT = "notification_settings_updated_at"
     const val NOTIFICATION_SETTINGS_CACHE_PREFS_NAME = "oppopods_notification_settings_cache"
     const val MILINK_SPATIAL_AUDIO_OPTION_ENABLED = "milink_spatial_audio_option_enabled"
+    const val DEVICE_PROFILES = "device_profiles"
+    const val ACTIVE_PROFILE_ID = "active_profile_id"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true
     const val DEFAULT_SHOW_CONNECTION_POPUP = false

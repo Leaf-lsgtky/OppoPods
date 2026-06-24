@@ -49,7 +49,10 @@ import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.CustomButtonFunction
-import moe.chenxy.oppopods.pods.GameModeImplementation
+import moe.chenxy.oppopods.pods.AssetKeys
+import moe.chenxy.oppopods.pods.DeviceProfile
+import moe.chenxy.oppopods.pods.DeviceProfileStore
+import moe.chenxy.oppopods.pods.ProfileAssets
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.pods.SpatialAudioMode
@@ -76,6 +79,7 @@ sealed interface Screen : NavKey {
     data object Home : Screen
     data object Settings : Screen
     data object AdvancedSettings : Screen
+    data object Profiles : Screen
     data object About : Screen
 }
 
@@ -95,7 +99,10 @@ fun MainUI(
     val gameMode = remember { mutableStateOf(false) }
     val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
 
-    val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+    val prefs = remember {
+        context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+            .also { DeviceProfileStore.ensureSeeded(it) }
+    }
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
     val milinkSpatialAudioOptionEnabled = remember {
         mutableStateOf(
@@ -105,19 +112,10 @@ fun MainUI(
             )
         )
     }
-    // Adaptive模式偏好设置（持久化存储），默认开启
-    val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
     val rfcommConnectionMethod = remember {
         mutableStateOf(
             RfcommConnectionMethod.fromPreference(
                 prefs.getString(RfcommConnectionMethod.PREF_KEY, null)
-            )
-        )
-    }
-    val gameModeImplementation = remember {
-        mutableStateOf(
-            GameModeImplementation.fromPreference(
-                prefs.getString(GameModeImplementation.PREF_KEY, null)
             )
         )
     }
@@ -170,6 +168,7 @@ fun MainUI(
         )
     }
 
+    val activeProfile = remember { mutableStateOf(DeviceProfileStore.activeProfile(prefs)) }
     val appController = remember { AppRfcommController() }
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
@@ -321,11 +320,20 @@ fun MainUI(
         }
     }
 
+    fun broadcastActiveProfile(profile: DeviceProfile) {
+        Intent(OppoPodsAction.ACTION_ACTIVE_PROFILE_CHANGED).apply {
+            setPackage("com.android.bluetooth")
+            putExtra(OppoPodsAction.EXTRA_PROFILE_JSON, DeviceProfileStore.exportJson(profile))
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            context.sendBroadcast(this)
+        }
+    }
+
     fun onDeviceSelected(device: BluetoothDevice) {
         appController.connect(
             device = device,
             connectionMethod = rfcommConnectionMethod.value,
-            gameModeImplementation = gameModeImplementation.value
+            profile = activeProfile.value
         )
     }
 
@@ -451,7 +459,9 @@ fun MainUI(
                             onGameModeChange = { setGameMode(it) },
                             spatialAudioMode = displaySpatialAudioMode,
                             onSpatialAudioModeChange = { setSpatialAudioMode(it) },
-                            adaptiveModeEnabled = adaptiveMode.value
+                            adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
+                            gameModeVisible = activeProfile.value.gameModeVisible,
+                            homeImageFile = ProfileAssets.file(context, activeProfile.value, AssetKeys.HOME_IMAGE)
                         )
                         "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
                         "error" -> Box(Modifier.padding(padding).fillMaxSize()) { ErrorPage(onRetry = { appController.disconnect() }) }
@@ -489,24 +499,6 @@ fun MainUI(
                     contentPadding = padding,
                     themeMode = themeMode,
                     onThemeModeChange = onThemeModeChange,
-                    adaptiveMode = adaptiveMode,
-                    onAdaptiveModeChange = {
-                        adaptiveMode.value = it
-                        prefs.edit().putBoolean("adaptive_mode", it).apply()
-                        // 广播 Adaptive 模式状态变更到蓝牙进程，确保跨进程实时同步
-                        listOf("com.android.bluetooth", "com.xiaomi.bluetooth").forEach { targetPackage ->
-                            Intent(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED).apply {
-                                setPackage(targetPackage)
-                                putExtra("enabled", it)
-                                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                                context.sendBroadcast(this)
-                            }
-                        }
-                        // 关闭Adaptive模式时，若当前处于Adaptive模式则自动切换至降噪模式
-                        if (!it && displayAnc == NoiseControlMode.ADAPTIVE) {
-                            setAncMode(NoiseControlMode.NOISE_CANCELLATION)
-                        }
-                    },
                     showConnectionBatteryIsland = showConnectionBatteryIsland,
                     onShowConnectionBatteryIslandChange = {
                         showConnectionBatteryIsland.value = it
@@ -550,7 +542,44 @@ fun MainUI(
                         )
                     },
                     onOpenAdvancedSettings = { backStack.add(Screen.AdvancedSettings) },
-                    onOpenAbout = { backStack.add(Screen.About) }
+                    onOpenAbout = { backStack.add(Screen.About) },
+                    onOpenProfiles = { backStack.add(Screen.Profiles) }
+                )
+            }
+        }
+        entry<Screen.Profiles> {
+            val profilesScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.device_profiles),
+                        largeTitle = stringResource(R.string.device_profiles),
+                        scrollBehavior = profilesScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { backStack.removeLast() },
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                ProfilesPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(profilesScrollBehavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    prefs = prefs,
+                    onActiveProfileChanged = { p ->
+                        activeProfile.value = p
+                        appController.setProfile(p)
+                        broadcastActiveProfile(p)
+                    }
                 )
             }
         }
@@ -593,20 +622,7 @@ fun MainUI(
                             .putString(RfcommConnectionMethod.PREF_KEY, it.preferenceValue)
                             .apply()
                     },
-                    gameModeImplementation = gameModeImplementation,
-                    onGameModeImplementationChange = {
-                        gameModeImplementation.value = it
-                        appController.setGameModeImplementation(it)
-                        prefs.edit()
-                            .putString(GameModeImplementation.PREF_KEY, it.preferenceValue)
-                            .apply()
-                        Intent(OppoPodsAction.ACTION_GAME_MODE_IMPLEMENTATION_CHANGED).apply {
-                            setPackage("com.android.bluetooth")
-                            putExtra(GameModeImplementation.PREF_KEY, it.preferenceValue)
-                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                            context.sendBroadcast(this)
-                        }
-                    },
+                    adaptiveVisible = activeProfile.value.adaptiveVisible,
                     showConnectionPopup = showConnectionPopup,
                     onShowConnectionPopupChange = {
                         showConnectionPopup.value = it

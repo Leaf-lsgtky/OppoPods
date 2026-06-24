@@ -26,7 +26,7 @@ Windows PowerShell 下使用 `.\gradlew.bat :app:assembleDebug`。GitHub Actions
 
 ## 测试与验证指南
 
-仓库没有 `app/src/test/` 或 `app/src/androidTest/`，也没有测试框架依赖。提交前运行 `./gradlew :app:lintDebug` 和 `./gradlew :app:assembleDebug`。涉及 Hook、蓝牙 RFCOMM、通知、连接弹窗或小米超级岛（一种Xiaomi HyperOS独有的，在安卓原生通知基础上添加额外参数构建的通知）的修改，需要在 HyperOS Android 15+ 设备上启用 LSPosed，并按 `scope.list` 的四个包完成手动回归。
+仓库没有 `app/src/test/` 或 `app/src/androidTest/`，也没有测试框架依赖。提交前运行 `./gradlew :app:assembleDebug`。涉及 Hook、蓝牙 RFCOMM、通知、连接弹窗或小米超级岛（一种Xiaomi HyperOS独有的，在安卓原生通知基础上添加额外参数构建的通知）的修改，需要在 HyperOS Android 15+ 设备上启用 LSPosed，并按 `scope.list` 的四个包完成手动回归。
 
 ## 提交与 Pull Request 规范
 
