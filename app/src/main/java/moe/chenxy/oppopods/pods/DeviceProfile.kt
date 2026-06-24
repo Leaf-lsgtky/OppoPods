@@ -118,8 +118,6 @@ object ProfileKeys {
     const val ANC_ADAPTIVE = "anc_adaptive"
     const val GAME_ON = "game_on"
     const val GAME_OFF = "game_off"
-    const val GAME_LL_ON = "game_ll_on"
-    const val GAME_LL_OFF = "game_ll_off"
     const val SPATIAL_OFF = "spatial_off"
     const val SPATIAL_FIXED = "spatial_fixed"
     const val SPATIAL_HEAD = "spatial_head"
