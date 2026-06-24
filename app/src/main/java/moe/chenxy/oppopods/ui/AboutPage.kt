@@ -1,7 +1,9 @@
 package moe.chenxy.oppopods.ui
 
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,10 +45,12 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -63,6 +67,7 @@ import moe.chenxy.oppopods.ui.effect.BgEffectBackground
 import moe.chenxy.oppopods.ui.effect.ColorBlendToken
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import kotlinx.coroutines.flow.onEach
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -109,7 +114,9 @@ fun SettingsPage(
     onNotificationIslandStyleChange: (Boolean) -> Unit = {},
     onOpenAdvancedSettings: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
-    onOpenProfiles: () -> Unit = {}
+    onOpenProfiles: () -> Unit = {},
+    debugMode: Boolean = false,
+    onOpenDebug: () -> Unit = {}
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -176,6 +183,17 @@ fun SettingsPage(
                     title = stringResource(R.string.about),
                     onClick = onOpenAbout
                 )
+            }
+        }
+
+        if (debugMode) {
+            item {
+                Card(modifier = Modifier.padding(top = 12.dp)) {
+                    ArrowPreference(
+                        title = stringResource(R.string.debug_mode),
+                        onClick = onOpenDebug
+                    )
+                }
             }
         }
     }
@@ -287,9 +305,79 @@ fun AdvancedSettingsPage(
 }
 
 @Composable
+fun MoreSettingsPage(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    autoPlayPauseVisible: Boolean = false,
+    autoPlayPause: Boolean = false,
+    onAutoPlayPauseChange: (Boolean) -> Unit = {},
+    dualDeviceVisible: Boolean = false,
+    dualDevice: Boolean = false,
+    onDualDeviceChange: (Boolean) -> Unit = {},
+    connectedDevicesVisible: Boolean = false,
+    connectedDevices: List<moe.chenxy.oppopods.pods.ConnectedDevice> = emptyList(),
+    connectedDevicesReceived: Boolean = false
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize().scrollEndHaptic(),
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding() + 12.dp,
+            bottom = contentPadding.calculateBottomPadding() + 12.dp,
+            start = 12.dp,
+            end = 12.dp
+        ),
+        overscrollEffect = null,
+    ) {
+        item {
+            Card {
+                if (autoPlayPauseVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.auto_play_pause),
+                        summary = stringResource(R.string.auto_play_pause_summary),
+                        checked = autoPlayPause,
+                        onCheckedChange = onAutoPlayPauseChange
+                    )
+                }
+                if (dualDeviceVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.dual_device),
+                        summary = stringResource(R.string.dual_device_summary),
+                        checked = dualDevice,
+                        onCheckedChange = onDualDeviceChange
+                    )
+                }
+                if (dualDevice && connectedDevicesVisible) {
+                    if (!connectedDevicesReceived) {
+                        // 等待耳机推送设备列表
+                    } else if (connectedDevices.isEmpty()) {
+                        BasicComponent(
+                            title = stringResource(R.string.dual_device_no_device)
+                        )
+                    } else {
+                        connectedDevices.forEach { device ->
+                            val statusText = when {
+                                device.active -> stringResource(R.string.dual_device_active)
+                                device.connected -> stringResource(R.string.dual_device_connected)
+                                else -> stringResource(R.string.dual_device_disconnected)
+                            }
+                            BasicComponent(
+                                title = device.name.ifEmpty { device.mac },
+                                summary = statusText
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun AboutPage(
     modifier: Modifier = Modifier,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    debugMode: Boolean = false,
+    onDebugModeChanged: (Boolean) -> Unit = {}
 ) {
     val topAppBarScrollBehavior = MiuixScrollBehavior()
     val lazyListState = rememberLazyListState()
@@ -351,7 +439,9 @@ fun AboutPage(
                 topAppBarScrollBehavior = topAppBarScrollBehavior,
                 lazyListState = lazyListState,
                 scrollProgress = scrollProgress,
-                onLogoHeightChanged = { logoHeightPx = it }
+                onLogoHeightChanged = { logoHeightPx = it },
+                debugMode = debugMode,
+                onDebugModeChanged = onDebugModeChanged
             )
         }
     }
@@ -365,10 +455,14 @@ private fun AboutContent(
     lazyListState: LazyListState,
     scrollProgress: Float,
     onLogoHeightChanged: (Int) -> Unit,
+    debugMode: Boolean = false,
+    onDebugModeChanged: (Boolean) -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
+    val context = LocalContext.current
+    var debugClickCount by remember { mutableIntStateOf(0) }
     val backdrop = rememberLayerBackdrop()
     val isDark = isSystemInDarkTheme()
     val blurEnabled = isRenderEffectSupported()
@@ -589,6 +683,32 @@ private fun AboutContent(
                                 scrollPadding.calculateTopPadding() +
                                 126.dp
                         )
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val iconSizePx = with(density) { 88.dp.toPx() }
+                                val iconTopPx = with(density) { (40.dp + 52.dp).toPx() }
+                                val spacerWidth = size.width.toFloat()
+                                val iconLeft = (spacerWidth - iconSizePx) / 2
+                                val iconRight = iconLeft + iconSizePx
+
+                                if (offset.x in iconLeft..iconRight && offset.y in iconTopPx..(iconTopPx + iconSizePx)) {
+                                    debugClickCount++
+                                    if (debugClickCount >= 5) {
+                                        debugClickCount = 0
+                                        val newState = !debugMode
+                                        onDebugModeChanged(newState)
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                if (newState) R.string.debug_mode_enabled
+                                                else R.string.debug_mode_disabled
+                                            ),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                        }
                         .onSizeChanged { size -> onLogoHeightChanged(size.height) }
                         .onGloballyPositioned { coordinates ->
                             val y = coordinates.positionInWindow().y

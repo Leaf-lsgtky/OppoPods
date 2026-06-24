@@ -12,7 +12,7 @@ data class PodCommand(
     val seq: Int = 0xF0,
     val payload: String = ""
 ) {
-    fun toPacket(): ByteArray = OppoPackets.buildPacket(cmd, seq, payload.hexToBytes())
+    fun toPacket(): ByteArray = OppoPackets.buildPacketFixedSeq(cmd, seq, payload.hexToBytes())
 }
 
 /**
@@ -25,6 +25,10 @@ data class DeviceProfile(
     val name: String,
     val adaptiveVisible: Boolean = false,
     val gameModeVisible: Boolean = false,
+    val noiseLevelVisible: Boolean = false,
+    val autoPlayPauseVisible: Boolean = false,
+    val dualDeviceVisible: Boolean = false,
+    val connectedDevicesVisible: Boolean = false,
     val commands: Map<String, PodCommand> = emptyMap(),
     val flags: Map<String, Boolean> = emptyMap(),
     val assets: Map<String, String> = emptyMap(),
@@ -69,6 +73,33 @@ data class DeviceProfile(
     fun gameModePackets(enabled: Boolean): List<ByteArray> {
         return listOf(packet(if (enabled) ProfileKeys.GAME_ON else ProfileKeys.GAME_OFF))
     }
+
+    /** 降噪等级整包。 */
+    fun noiseLevelPacket(level: Int): ByteArray = packet(
+        when (level) {
+            NoiseLevel.SMART -> ProfileKeys.SET_NOISE_LEVEL_SMART
+            NoiseLevel.LIGHT -> ProfileKeys.SET_NOISE_LEVEL_LIGHT
+            NoiseLevel.MEDIUM -> ProfileKeys.SET_NOISE_LEVEL_MEDIUM
+            else -> ProfileKeys.SET_NOISE_LEVEL_DEEP
+        }
+    )
+
+    /** 佩戴检测整包。 */
+    fun autoPlayPausePacket(enabled: Boolean): ByteArray =
+        packet(if (enabled) ProfileKeys.SET_AUTO_PLAY_PAUSE_ON else ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF)
+
+    /** 双设备连接整包。 */
+    fun dualDevicePacket(enabled: Boolean): ByteArray =
+        packet(if (enabled) ProfileKeys.SET_DUAL_DEVICE_ON else ProfileKeys.SET_DUAL_DEVICE_OFF)
+}
+
+/** 降噪等级（仅在降噪模式下有效）。 */
+object NoiseLevel {
+    const val SMART = 0x80
+    const val LIGHT = 0x40
+    const val MEDIUM = 0x20
+    const val DEEP = 0x10
+    val ALL = listOf(SMART, LIGHT, MEDIUM, DEEP)
 }
 
 /** assets 映射的标准键名（值为配置资源目录内的文件名；缺省则用内置资源）。 */
@@ -95,6 +126,14 @@ object ProfileKeys {
     const val QUERY_BATTERY = "query_battery"
     const val QUERY_ANC = "query_anc"
     const val QUERY_STATUS = "query_status"
+    const val SET_NOISE_LEVEL_SMART = "set_noise_level_smart"
+    const val SET_NOISE_LEVEL_LIGHT = "set_noise_level_light"
+    const val SET_NOISE_LEVEL_MEDIUM = "set_noise_level_medium"
+    const val SET_NOISE_LEVEL_DEEP = "set_noise_level_deep"
+    const val SET_AUTO_PLAY_PAUSE_ON = "set_auto_play_pause_on"
+    const val SET_AUTO_PLAY_PAUSE_OFF = "set_auto_play_pause_off"
+    const val SET_DUAL_DEVICE_ON = "set_dual_device_on"
+    const val SET_DUAL_DEVICE_OFF = "set_dual_device_off"
 }
 
 /** 把 "01 01 02" / "010102" 这类 hex 串解析为字节数组（忽略空白）。 */

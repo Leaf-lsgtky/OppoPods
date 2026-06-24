@@ -59,6 +59,21 @@ class AppRfcommController {
     private val _spatialAudioMode = MutableStateFlow(SpatialAudioMode.OFF)
     val spatialAudioMode: StateFlow<Int> = _spatialAudioMode
 
+    private val _noiseLevel = MutableStateFlow(NoiseLevel.DEEP)
+    val noiseLevel: StateFlow<Int> = _noiseLevel
+
+    private val _autoPlayPause = MutableStateFlow(false)
+    val autoPlayPause: StateFlow<Boolean> = _autoPlayPause
+
+    private val _dualDevice = MutableStateFlow(false)
+    val dualDevice: StateFlow<Boolean> = _dualDevice
+
+    private val _connectedDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
+    val connectedDevices: StateFlow<List<ConnectedDevice>> = _connectedDevices
+
+    private val _connectedDevicesReceived = MutableStateFlow(false)
+    val connectedDevicesReceived: StateFlow<Boolean> = _connectedDevicesReceived
+
     fun setProfile(profile: DeviceProfile) {
         this.profile = profile
     }
@@ -84,6 +99,9 @@ class AppRfcommController {
                 _connectionState.value = ConnectionState.CONNECTED
 
                 startPacketReader(socket!!.inputStream)
+
+                delay(300)
+                sendPacket(OppoPackets.buildQueryBroadcastCodes())
 
                 delay(300)
                 queryStatus()
@@ -132,6 +150,7 @@ class AppRfcommController {
 
     @OptIn(ExperimentalStdlibApi::class)
     private fun handlePacket(packet: ByteArray) {
+        BtLogStore.addRecv(packet, BtLogLabeler.labelRecv(packet))
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
@@ -179,8 +198,11 @@ class AppRfcommController {
 
         val ancResult = AncModeParser.parse(packet)
         if (ancResult != null) {
-            Log.d(TAG, "ANC mode received: $ancResult")
-            _ancMode.value = ancResult
+            Log.d(TAG, "ANC mode received: ${ancResult.mode}, noiseLevel=${ancResult.noiseLevel}")
+            _ancMode.value = ancResult.mode
+            if (ancResult.noiseLevel != null) {
+                _noiseLevel.value = ancResult.noiseLevel
+            }
             return
         }
 
@@ -190,6 +212,34 @@ class AppRfcommController {
             Log.d(TAG, "Game mode received: $gameModeResult")
             lastGameModeStatusUpdateMs = SystemClock.elapsedRealtime()
             _gameMode.value = gameModeResult
+            return
+        }
+
+        // Try parse 0x8200 broadcast codes response
+        val broadcastCodes = BroadcastCodesParser.parse(packet)
+        if (broadcastCodes != null) {
+            Log.d(TAG, "Broadcast codes received: $broadcastCodes")
+            scope.launch {
+                delay(100)
+                sendPacket(OppoPackets.buildSubscribeBroadcast(broadcastCodes))
+            }
+            return
+        }
+
+        // Try parse batch status for autoPlayPause / dualDevice
+        val batchStatus = GameModeParser.parseStatus(packet)
+        if (batchStatus != null) {
+            batchStatus.autoPlayPause?.let { _autoPlayPause.value = it }
+            batchStatus.dualDevice?.let { _dualDevice.value = it }
+            return
+        }
+
+        // Try parse 0x0204 connected devices notification (eventCode=0x06)
+        val connectedDevicesResult = ConnectedDevicesParser.parse(packet)
+        if (connectedDevicesResult != null) {
+            Log.d(TAG, "Connected devices received: $connectedDevicesResult")
+            _connectedDevices.value = connectedDevicesResult
+            _connectedDevicesReceived.value = true
             return
         }
 
@@ -215,6 +265,7 @@ class AppRfcommController {
 
     private fun sendPacket(packet: ByteArray) {
         try {
+            BtLogStore.addSend(packet, BtLogLabeler.labelSend(packet))
             socket?.outputStream?.write(packet)
             socket?.outputStream?.flush()
         } catch (e: IOException) {
@@ -231,6 +282,22 @@ class AppRfcommController {
         val normalizedMode = mode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
         _spatialAudioMode.value = normalizedMode
         scope.launch { sendPacket(profile.spatialPacket(normalizedMode)) }
+    }
+
+    fun setNoiseLevel(level: Int) {
+        _noiseLevel.value = level
+        scope.launch { sendPacket(profile.noiseLevelPacket(level)) }
+    }
+
+    fun setAutoPlayPause(enabled: Boolean) {
+        _autoPlayPause.value = enabled
+        scope.launch { sendPacket(profile.autoPlayPausePacket(enabled)) }
+    }
+
+    fun setDualDevice(enabled: Boolean) {
+        _dualDevice.value = enabled
+        _connectedDevicesReceived.value = false
+        scope.launch { sendPacket(profile.dualDevicePacket(enabled)) }
     }
 
     fun setANCMode(mode: NoiseControlMode) {
@@ -283,5 +350,10 @@ class AppRfcommController {
         _deviceName.value = ""
         _gameMode.value = false
         _spatialAudioMode.value = SpatialAudioMode.OFF
+        _noiseLevel.value = NoiseLevel.DEEP
+        _autoPlayPause.value = false
+        _dualDevice.value = false
+        _connectedDevices.value = emptyList()
+        _connectedDevicesReceived.value = false
     }
 }

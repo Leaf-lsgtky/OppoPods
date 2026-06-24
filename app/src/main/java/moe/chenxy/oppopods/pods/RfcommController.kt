@@ -65,6 +65,11 @@ object RfcommController {
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
     private var currentSpatialAudioMode: Int = SpatialAudioMode.OFF
+    private var currentNoiseLevel: Int = NoiseLevel.DEEP
+    private var currentAutoPlayPause: Boolean = false
+    private var currentDualDevice: Boolean = false
+    private var currentConnectedDevices: List<ConnectedDevice> = emptyList()
+    private var currentConnectedDevicesReceived: Boolean = false
     @Volatile
     private lateinit var activeProfile: DeviceProfile
     private var rfcommConnectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID
@@ -145,6 +150,66 @@ object RfcommController {
         }
     }
 
+    private fun changeUINoiseLevelStatus(level: Int) {
+        Intent(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED).apply {
+            this.putExtra("level", level)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED) {
+            putExtra("level", level)
+        }
+    }
+
+    private fun changeUIAutoPlayPauseStatus(enabled: Boolean) {
+        Intent(OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED).apply {
+            this.putExtra("enabled", enabled)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED) {
+            putExtra("enabled", enabled)
+        }
+    }
+
+    private fun changeUIDualDeviceStatus(enabled: Boolean) {
+        Intent(OppoPodsAction.ACTION_PODS_DUAL_DEVICE_CHANGED).apply {
+            this.putExtra("enabled", enabled)
+            this.putExtra("devices_received", false)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_DUAL_DEVICE_CHANGED) {
+            putExtra("enabled", enabled)
+        }
+    }
+
+    private fun changeUIConnectedDevicesStatus(devices: List<ConnectedDevice>) {
+        Intent(OppoPodsAction.ACTION_PODS_CONNECTED_DEVICES_CHANGED).apply {
+            this.putParcelableArrayListExtra("devices", ArrayList(devices))
+            this.putExtra("devices_received", currentConnectedDevicesReceived)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun sendBtLogBroadcast(isSend: Boolean, packet: ByteArray, label: String?) {
+        val context = mContext ?: return
+        Intent(OppoPodsAction.ACTION_BT_LOG_ENTRY).apply {
+            setPackage(BuildConfig.APPLICATION_ID)
+            putExtra(OppoPodsAction.EXTRA_BT_LOG_IS_SEND, isSend)
+            putExtra(OppoPodsAction.EXTRA_BT_LOG_HEX, packet.toHexString(HexFormat.UpperCase))
+            if (label != null) putExtra(OppoPodsAction.EXTRA_BT_LOG_LABEL, label)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            context.sendBroadcast(this)
+        }
+    }
+
     private fun refreshPodsNotification() {
         val context = mContext ?: return
         if (!::mDevice.isInitialized) return
@@ -217,6 +282,10 @@ object RfcommController {
                 changeUIAncStatus(currentAnc)
                 changeUIGameModeStatus(currentGameMode)
                 changeUISpatialAudioStatus(currentSpatialAudioMode)
+                changeUINoiseLevelStatus(currentNoiseLevel)
+                changeUIAutoPlayPauseStatus(currentAutoPlayPause)
+                changeUIDualDeviceStatus(currentDualDevice)
+                changeUIConnectedDevicesStatus(currentConnectedDevices)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     this.`package` = BuildConfig.APPLICATION_ID
@@ -245,6 +314,18 @@ object RfcommController {
             OppoPodsAction.ACTION_SPATIAL_AUDIO_SET -> {
                 val mode = intent.getIntExtra("mode", SpatialAudioMode.OFF)
                 setSpatialAudioMode(mode)
+            }
+            OppoPodsAction.ACTION_NOISE_LEVEL_SET -> {
+                val level = intent.getIntExtra("level", NoiseLevel.DEEP)
+                setNoiseLevel(level)
+            }
+            OppoPodsAction.ACTION_AUTO_PLAY_PAUSE_SET -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                setAutoPlayPause(enabled)
+            }
+            OppoPodsAction.ACTION_DUAL_DEVICE_SET -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                setDualDevice(enabled)
             }
             OppoPodsAction.ACTION_CYCLE_ANC -> {
                 cycleAnc()
@@ -446,6 +527,9 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
             this.addAction(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET)
+            this.addAction(OppoPodsAction.ACTION_NOISE_LEVEL_SET)
+            this.addAction(OppoPodsAction.ACTION_AUTO_PLAY_PAUSE_SET)
+            this.addAction(OppoPodsAction.ACTION_DUAL_DEVICE_SET)
             this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
             this.addAction(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED)
             this.addAction(OppoPodsAction.ACTION_ACTIVE_PROFILE_CHANGED)
@@ -476,6 +560,9 @@ object RfcommController {
             }
 
             if (initialConnected) {
+                delay(300)
+                sendPacketSafe(OppoPackets.buildQueryBroadcastCodes(), "query broadcast codes")
+                delay(300)
                 sendStatusQueryPackets()
             } else {
                 Log.w(TAG, "Initial RFCOMM connect failed; will retry on the next control/query operation")
@@ -646,6 +733,7 @@ object RfcommController {
 
     @OptIn(ExperimentalStdlibApi::class)
     private fun handleOppoPacket(packet: ByteArray) {
+        sendBtLogBroadcast(isSend = false, packet = packet, label = BtLogLabeler.labelRecv(packet))
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
@@ -667,12 +755,16 @@ object RfcommController {
         // Try parse as ANC mode response
         val ancResult = AncModeParser.parse(packet)
         if (ancResult != null) {
-            Log.d(TAG, "ANC mode received: $ancResult")
-            currentAnc = when (ancResult) {
+            Log.d(TAG, "ANC mode received: ${ancResult.mode}, noiseLevel=${ancResult.noiseLevel}")
+            currentAnc = when (ancResult.mode) {
                 NoiseControlMode.OFF -> 1
                 NoiseControlMode.NOISE_CANCELLATION -> 2
                 NoiseControlMode.TRANSPARENCY -> 3
                 NoiseControlMode.ADAPTIVE -> 4
+            }
+            if (ancResult.noiseLevel != null) {
+                currentNoiseLevel = ancResult.noiseLevel
+                changeUINoiseLevelStatus(ancResult.noiseLevel)
             }
             changeUIAncStatus(currentAnc)
             return
@@ -685,6 +777,41 @@ object RfcommController {
             lastGameModeStatusUpdateMs = SystemClock.elapsedRealtime()
             currentGameMode = gameModeResult
             changeUIGameModeStatus(gameModeResult)
+            return
+        }
+
+        // Try parse 0x8200 broadcast codes response
+        val broadcastCodes = BroadcastCodesParser.parse(packet)
+        if (broadcastCodes != null) {
+            Log.d(TAG, "Broadcast codes received: $broadcastCodes")
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(100)
+                sendPacketSafe(OppoPackets.buildSubscribeBroadcast(broadcastCodes), "subscribe broadcast")
+            }
+            return
+        }
+
+        // Try parse batch status for autoPlayPause / dualDevice
+        val batchStatus = GameModeParser.parseStatus(packet)
+        if (batchStatus != null) {
+            batchStatus.autoPlayPause?.let {
+                currentAutoPlayPause = it
+                changeUIAutoPlayPauseStatus(it)
+            }
+            batchStatus.dualDevice?.let {
+                currentDualDevice = it
+                changeUIDualDeviceStatus(it)
+            }
+            return
+        }
+
+        // Try parse 0x0204 connected devices notification (eventCode=0x06)
+        val connectedDevicesResult = ConnectedDevicesParser.parse(packet)
+        if (connectedDevicesResult != null) {
+            Log.d(TAG, "Connected devices received: $connectedDevicesResult")
+            currentConnectedDevices = connectedDevicesResult
+            currentConnectedDevicesReceived = true
+            changeUIConnectedDevicesStatus(connectedDevicesResult)
             return
         }
 
@@ -737,6 +864,8 @@ object RfcommController {
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
         currentSpatialAudioMode = SpatialAudioMode.OFF
+        currentConnectedDevices = emptyList()
+        currentConnectedDevicesReceived = false
         cachedDeviceName = ""
         mContext = null
         MediaControl.mContext = null
@@ -744,6 +873,7 @@ object RfcommController {
 
     private fun writePacket(targetSocket: BluetoothSocket, packet: ByteArray, reason: String): Boolean {
         try {
+            sendBtLogBroadcast(isSend = true, packet = packet, label = BtLogLabeler.labelSend(packet))
             targetSocket.outputStream.write(packet)
             targetSocket.outputStream.flush()
             return true
@@ -799,6 +929,34 @@ object RfcommController {
         changeUISpatialAudioStatus(normalizedMode)
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(activeProfile.spatialPacket(normalizedMode), "set spatial audio mode")
+        }
+    }
+
+    fun setNoiseLevel(level: Int) {
+        Log.d(TAG, "setNoiseLevel: $level")
+        currentNoiseLevel = level
+        changeUINoiseLevelStatus(level)
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(activeProfile.noiseLevelPacket(level), "set noise level")
+        }
+    }
+
+    fun setAutoPlayPause(enabled: Boolean) {
+        Log.d(TAG, "setAutoPlayPause: $enabled")
+        currentAutoPlayPause = enabled
+        changeUIAutoPlayPauseStatus(enabled)
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(activeProfile.autoPlayPausePacket(enabled), "set auto play pause")
+        }
+    }
+
+    fun setDualDevice(enabled: Boolean) {
+        Log.d(TAG, "setDualDevice: $enabled")
+        currentDualDevice = enabled
+        currentConnectedDevicesReceived = false
+        changeUIDualDeviceStatus(enabled)
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(activeProfile.dualDevicePacket(enabled), "set dual device")
         }
     }
 

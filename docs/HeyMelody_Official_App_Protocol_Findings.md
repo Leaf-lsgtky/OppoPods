@@ -380,7 +380,7 @@ payload = <eventCode:1> <eventData...>
 | `0x03` | NoiseReduction umbrella | `0x14` / `0x17` / `0x2C` | eventData 首字节是子类型，分到 `NoiseReductionInfo`、`CurrentNoiseModeInfo`、`IntelligentNoiseModeInfo` |
 | `0x04` | CompactnessDetectionInfo | `0x15` | 左右耳贴合度/紧密度检测信息，两段 `CompactnessDetectionInfo` |
 | `0x05` | `GAME_MODE_CHANGED` | `0x33` | 游戏模式状态，部分机型按 product id 决定偏移 |
-| `0x06` | MultiConnectInformations | `0x22` | 多设备连接状态 |
+| `0x06` | MultiConnectInformations | `0x22` | 多设备连接状态；OppoPods 已解析双设备开关状态，设备名称 payload 格式待抓包确认 |
 | `0x08` | `HEARING_ENHANCE_DETECTION_STATUS_CHANGED` | `0x19` / `0x2D` | 听感增强检测状态，payload 至少含类型/状态 |
 | `0x09` | FreqPacket / `FreqDataCache` | `0x1A` | 听感增强/听力保护频率数据分片 |
 | `0x0A` | Zen mode switch status | `0x23` | `[status]` |
@@ -562,12 +562,12 @@ AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
 | Dec | Hex | 官方条件 / 含义 |
 | --- | --- | --- |
 | 5 | `0x05` | 固定加入；日志里出现 `updateFeatureSwitchToStatus IGNORE 5` |
-| 4 | `0x04` | `wearDetection`，佩戴检测 |
+| 4 | `0x04` | `wearDetection`，佩戴检测；OppoPods 通过 `0x0403` 设置开关，通过 `0x810D` 解析状态 |
 | 11 | `0x0B` | `hearingEnhancement` / `hearingEnhancementNew` |
 | 12 | `0x0C` | `personalNoise` |
 | 13 | `0x0D` | `clickTakePic` / `clickTakePicNew` |
 | 15 | `0x0F` | `zenMode` |
-| 17 | `0x11` | `multiDevicesConnect` |
+| 17 | `0x11` | `multiDevicesConnect`；OppoPods 通过 `0x0403` 设置开关，通过 `0x810D` 解析状态 |
 | 9 | `0x09` | `vocalEnhance` |
 | 19 | `0x13` | `headSetSoundRecord` |
 | 24 | `0x18` | `highToneQuality` |
@@ -1267,7 +1267,7 @@ whitelistSecretKey
 
 优先抓这些动作：
 
-1. 切一次佩戴检测，确认 `featureId=0x04` 的 `0x0403` 设置和响应。
+1. 切一次佩戴检测，确认 `featureId=0x04` 的 `0x0403` 设置和响应。（OppoPods 已实现 `0x0403 featureId=0x04` 设置，待实机验证）
 2. 切一次项目里的游戏主开关，确认 `featureId=0x28` 是否固定对应该 UI。
 3. 切一次游戏声音，确认 `0x0423` payload 顺序。
 4. 切一次游戏 EQ，确认 `0x0420` payload。
@@ -1276,3 +1276,6 @@ whitelistSecretKey
 7. 抓一包长度超过 `0x7F` 的设置或查询，验证外层 `LinkLen` varint 写法。
 8. 抓 `0x0200` 段主动上报，重点看 `seq=FF` 时的 cmd、payload 和 UI 状态变化关系。
 9. 如果要从系统层进一步坐实 `uihChannel5/15`，需要抓蓝牙 socket/channel 建连日志；官方 App Java 层目前只给出 UUID。
+10. 切一次双设备连接开关，确认 `featureId=0x11` 的 `0x0403` 设置和响应。（OppoPods 已实现 `0x0403 featureId=0x11` 设置，待实机验证）
+11. 抓一次 `0x0204` eventCode `0x06` (MultiConnectInformations)，确认已连接设备列表的 payload 格式（MAC、名称等字段）。
+12. 切一次降噪深度（NC 模式下），确认 `0x0404` 使用 `01 01 <level>` 还是 `01 02 <level>` 格式。

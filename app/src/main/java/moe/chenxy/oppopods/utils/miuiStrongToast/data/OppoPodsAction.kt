@@ -14,6 +14,13 @@ object OppoPodsAction {
     const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
     const val ACTION_SPATIAL_AUDIO_SET = "chen.action.oppopods.spatial_audio_set"
     const val ACTION_PODS_SPATIAL_AUDIO_CHANGED = "chen.action.oppopods.pods_spatial_audio_changed"
+    const val ACTION_NOISE_LEVEL_SET = "chen.action.oppopods.noise_level_set"
+    const val ACTION_PODS_NOISE_LEVEL_CHANGED = "chen.action.oppopods.pods_noise_level_changed"
+    const val ACTION_AUTO_PLAY_PAUSE_SET = "chen.action.oppopods.auto_play_pause_set"
+    const val ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED = "chen.action.oppopods.pods_auto_play_pause_changed"
+    const val ACTION_DUAL_DEVICE_SET = "chen.action.oppopods.dual_device_set"
+    const val ACTION_PODS_DUAL_DEVICE_CHANGED = "chen.action.oppopods.pods_dual_device_changed"
+    const val ACTION_PODS_CONNECTED_DEVICES_CHANGED = "chen.action.oppopods.pods_connected_devices_changed"
     const val ACTION_CYCLE_ANC = "chen.action.oppopods.cycle_anc"
     const val ACTION_NOTIFICATION_SETTINGS_CHANGED = "chen.action.oppopods.notification_settings_changed"
     const val ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED = "chen.action.oppopods.milink_spatial_audio_option_changed"
@@ -25,4 +32,9 @@ object OppoPodsAction {
     const val EXTRA_PROFILE_JSON = "profile_json"
     const val EXTRA_ALLOW_RFCOMM_RECONNECT = "allow_rfcomm_reconnect"
     const val EXTRA_RFCOMM_CONNECTED = "rfcomm_connected"
+
+    const val ACTION_BT_LOG_ENTRY = "chen.action.oppopods.bt_log_entry"
+    const val EXTRA_BT_LOG_IS_SEND = "is_send"
+    const val EXTRA_BT_LOG_HEX = "hex"
+    const val EXTRA_BT_LOG_LABEL = "label"
 }

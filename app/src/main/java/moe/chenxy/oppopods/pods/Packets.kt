@@ -1,5 +1,8 @@
 package moe.chenxy.oppopods.pods
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
 /**
  * OPPO earphone RFCOMM protocol packet definitions.
  *
@@ -9,23 +12,57 @@ package moe.chenxy.oppopods.pods
 
 object OppoPackets {
 
-    /** Build a complete OPPO protocol packet. */
-    fun buildPacket(cmd: Int, seq: Int = 0xF0, payload: ByteArray = byteArrayOf()): ByteArray {
+    private var seqCounter: Int = 0x01
+
+    private fun nextSeq(): Int {
+        val seq = seqCounter
+        seqCounter = if (seqCounter >= 0xFE) 0x01 else seqCounter + 1
+        return seq
+    }
+
+    /** Build a complete OPPO protocol packet with auto-incrementing seq. */
+    fun buildPacket(cmd: Int, seq: Int = nextSeq(), payload: ByteArray = byteArrayOf()): ByteArray {
         val payLen = payload.size
-        // TotalLen = 7 (header fields after TotalLen: Res(2) + Cmd(2) + Seq(1) + PayLen(2)) + payLen
         val totalLen = 7 + payLen
-        val packet = ByteArray(2 + totalLen) // Header(1) + TotalLen(1) + rest
-        packet[0] = 0xAA.toByte()           // Header
-        packet[1] = totalLen.toByte()        // TotalLen
-        packet[2] = 0x00                     // Res byte 1
-        packet[3] = 0x00                     // Res byte 2
-        packet[4] = (cmd and 0xFF).toByte()          // Cmd low byte
-        packet[5] = ((cmd shr 8) and 0xFF).toByte()  // Cmd high byte
-        packet[6] = seq.toByte()             // Seq
-        packet[7] = (payLen and 0xFF).toByte()        // PayLen low byte
-        packet[8] = ((payLen shr 8) and 0xFF).toByte() // PayLen high byte
+        val packet = ByteArray(2 + totalLen)
+        packet[0] = 0xAA.toByte()
+        packet[1] = totalLen.toByte()
+        packet[2] = 0x00
+        packet[3] = 0x00
+        packet[4] = (cmd and 0xFF).toByte()
+        packet[5] = ((cmd shr 8) and 0xFF).toByte()
+        packet[6] = seq.toByte()
+        packet[7] = (payLen and 0xFF).toByte()
+        packet[8] = ((payLen shr 8) and 0xFF).toByte()
         payload.copyInto(packet, 9)
         return packet
+    }
+
+    /** Build with fixed seq (for seed profile packets that need deterministic output). */
+    fun buildPacketFixedSeq(cmd: Int, seq: Int = 0xF0, payload: ByteArray = byteArrayOf()): ByteArray {
+        val payLen = payload.size
+        val totalLen = 7 + payLen
+        val packet = ByteArray(2 + totalLen)
+        packet[0] = 0xAA.toByte()
+        packet[1] = totalLen.toByte()
+        packet[2] = 0x00
+        packet[3] = 0x00
+        packet[4] = (cmd and 0xFF).toByte()
+        packet[5] = ((cmd shr 8) and 0xFF).toByte()
+        packet[6] = seq.toByte()
+        packet[7] = (payLen and 0xFF).toByte()
+        packet[8] = ((payLen shr 8) and 0xFF).toByte()
+        payload.copyInto(packet, 9)
+        return packet
+    }
+
+    /** Query notification capability: 0x0200 */
+    fun buildQueryBroadcastCodes(): ByteArray = buildPacket(Cmd.QUERY_BROADCAST_CODES)
+
+    /** Subscribe to notification events: 0x0205 */
+    fun buildSubscribeBroadcast(codes: List<Int>): ByteArray {
+        val payload = byteArrayOf(codes.size.toByte()) + codes.map { it.toByte() }.toByteArray()
+        return buildPacket(Cmd.SUBSCRIBE_BROADCAST, payload = payload)
     }
 }
 
@@ -98,6 +135,12 @@ object GameModeFeature {
     const val MAIN = 0x28
 }
 
+/** Batch status query parameter IDs (0x810D response). */
+object BatchParamId {
+    const val AUTO_PLAY_PAUSE = 0x04
+    const val DUAL_DEVICE = 0x11
+}
+
 /** Spatial audio mode values. */
 object SpatialAudioMode {
     const val OFF = 0x00
@@ -133,6 +176,14 @@ object Cmd {
     const val SET_SPATIAL_AUDIO_RESPONSE = 0x8422
     /** Spatial audio mode notification */
     const val SPATIAL_AUDIO_NOTIFY = 0x0510
+    /** Query notification capability */
+    const val QUERY_BROADCAST_CODES = 0x0200
+    /** Notification capability response */
+    const val BROADCAST_CODES_RESPONSE = 0x8200
+    /** Subscribe to notification events */
+    const val SUBSCRIBE_BROADCAST = 0x0205
+    /** Subscribe response */
+    const val SUBSCRIBE_BROADCAST_RESPONSE = 0x8205
 }
 
 /**
@@ -261,10 +312,13 @@ object BatteryParser {
  * Cmd: 0x810C (mode query response) or 0x0204 (mode change notification)
  * Scan payload for consecutive bytes 01 01 [Val1] [Val2]
  * Val mapping: 0x10 0x00=NC, 0x00 0x01=Transparency, 0x08 0x00=Off, 0x00 0x08=Adaptive
+ * For NC mode, Val1 can also be a noise level: 0x80=Smart, 0x40=Light, 0x20=Medium, 0x10=Deep
  */
 object AncModeParser {
 
-    fun parse(data: ByteArray): NoiseControlMode? {
+    data class AncResult(val mode: NoiseControlMode, val noiseLevel: Int? = null)
+
+    fun parse(data: ByteArray): AncResult? {
         if (data.size < 9) return null
         if (data[0] != 0xAA.toByte()) return null
 
@@ -279,10 +333,10 @@ object AncModeParser {
 
         if (data.size < payloadStart + payLen) return null
 
-        // For 0x0204, skip if this is a battery report (type=0x01) or button report (type=0x02)
+        // For 0x0204, only process ANC-related eventCodes (0x03=mode change, 0x04=fit detection)
         if (cmd == Cmd.ANC_MODE_NOTIFY && payLen > 0) {
             val reportType = data[payloadStart].toInt() and 0xFF
-            if (reportType == 0x01 || reportType == 0x02) return null
+            if (reportType != 0x03 && reportType != 0x04) return null
         }
 
         // Scan for pattern: 01 01 [Val1] [Val2]
@@ -292,16 +346,21 @@ object AncModeParser {
                 val val2 = data[i + 3].toInt() and 0xFF
 
                 return when {
-                    val1 == 0x10 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION
-                    val1 == 0x00 && val2 == 0x01 -> NoiseControlMode.TRANSPARENCY
-                    val1 == 0x08 && val2 == 0x00 -> NoiseControlMode.OFF
-                    val1 == 0x00 && val2 == 0x08 -> NoiseControlMode.ADAPTIVE
+                    val1 == 0x10 && val2 == 0x00 -> AncResult(NoiseControlMode.NOISE_CANCELLATION)
+                    val1 == 0x00 && val2 == 0x01 -> AncResult(NoiseControlMode.TRANSPARENCY)
+                    val1 == 0x08 && val2 == 0x00 -> AncResult(NoiseControlMode.OFF)
+                    val1 == 0x00 && val2 == 0x08 -> AncResult(NoiseControlMode.ADAPTIVE)
+                    val2 == 0x00 && val1 in NoiseLevel.ALL ->
+                        AncResult(NoiseControlMode.NOISE_CANCELLATION, noiseLevel = val1)
                     else -> null
                 }
             }
         }
         return null
     }
+
+    /** Legacy wrapper returning only the mode (backward compat for callers that don't need noise level). */
+    fun parseMode(data: ByteArray): NoiseControlMode? = parse(data)?.mode
 }
 
 /**
@@ -311,7 +370,9 @@ object GameModeParser {
 
     data class Status(
         val mainEnabled: Boolean?,
-        val lowLatencyEnabled: Boolean?
+        val lowLatencyEnabled: Boolean?,
+        val autoPlayPause: Boolean? = null,
+        val dualDevice: Boolean? = null
     )
 
     fun parseForFeature(data: ByteArray, featureId: Int): Boolean? {
@@ -341,16 +402,20 @@ object GameModeParser {
 
         var mainEnabled: Boolean? = null
         var lowLatencyEnabled: Boolean? = null
+        var autoPlayPause: Boolean? = null
+        var dualDevice: Boolean? = null
         for (i in payloadStart until minOf(payloadStart + payLen - 1, data.size - 1)) {
             val value = data[i + 1].toInt() and 0xFF
             if (value != 0x00 && value != 0x01) continue
             when (data[i].toInt() and 0xFF) {
                 GameModeFeature.MAIN -> mainEnabled = value == 0x01
                 GameModeFeature.LOW_LATENCY -> lowLatencyEnabled = value == 0x01
+                BatchParamId.AUTO_PLAY_PAUSE -> autoPlayPause = value == 0x01
+                BatchParamId.DUAL_DEVICE -> dualDevice = value == 0x01
             }
         }
-        return if (mainEnabled != null || lowLatencyEnabled != null) {
-            Status(mainEnabled, lowLatencyEnabled)
+        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null) {
+            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice)
         } else {
             null
         }
@@ -365,6 +430,8 @@ object GameModeParser {
 
         var mainEnabled: Boolean? = null
         var lowLatencyEnabled: Boolean? = null
+        var autoPlayPause: Boolean? = null
+        var dualDevice: Boolean? = null
         for (j in 0 until count) {
             val index = payloadStart + 2 + j * 2
             val featureId = data[index].toInt() and 0xFF
@@ -372,10 +439,12 @@ object GameModeParser {
             when (featureId) {
                 GameModeFeature.MAIN -> mainEnabled = enabled
                 GameModeFeature.LOW_LATENCY -> lowLatencyEnabled = enabled
+                BatchParamId.AUTO_PLAY_PAUSE -> autoPlayPause = enabled
+                BatchParamId.DUAL_DEVICE -> dualDevice = enabled
             }
         }
-        return if (mainEnabled != null || lowLatencyEnabled != null) {
-            Status(mainEnabled, lowLatencyEnabled)
+        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null) {
+            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice)
         } else {
             null
         }
@@ -425,5 +494,100 @@ object SwitchFeatureSetParser {
         val status = data[payloadStart].toInt() and 0xFF
         val value = if (payLen > 1) data[payloadStart + 1].toInt() and 0xFF else null
         return Result(status, value)
+    }
+}
+
+/** 已连接设备信息（来自耳机 0x0204 eventCode=0x06 主动上报）。 */
+@Parcelize
+data class ConnectedDevice(
+    val mac: String,
+    val connected: Boolean,
+    val active: Boolean,
+    val name: String
+) : Parcelable
+
+/** 解析 0x0204 主动上报中的已连接设备信息（eventCode=0x06, MultiConnectInformations）。 */
+object ConnectedDevicesParser {
+    private const val EVENT_CODE = 0x06
+
+    /**
+     * 从原始外层包解析已连接设备列表。
+     * payload 格式: [0x06] [Count] [Device1] [Device2] ...
+     * 每台设备: [MAC 6B LE] [ProfileFlags 1B] [ConnState 1B] [IsActive 1B] [NameLen 1B] [Name UTF-8]
+     */
+    fun parse(data: ByteArray): List<ConnectedDevice>? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+        if (cmd != Cmd.ANC_MODE_NOTIFY) return null // 0x0204
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+        if (data.size < payloadStart + payLen) return null
+        if (payLen < 2) return null
+
+        val eventCode = data[payloadStart].toInt() and 0xFF
+        if (eventCode != EVENT_CODE) return null
+
+        val count = data[payloadStart + 1].toInt() and 0xFF
+        val devices = mutableListOf<ConnectedDevice>()
+        var i = payloadStart + 2
+
+        for (d in 0 until count) {
+            if (i + 11 > data.size) break
+            val macBytes = data.sliceArray(i until i + 6)
+            val mac = macBytes.reversed().joinToString(":") { "%02X".format(it) }
+            i += 6
+            i += 1 // profileFlags
+            val connectionState = data[i].toInt() and 0xFF
+            i += 1
+            val isActive = data[i].toInt() and 0xFF == 0x01
+            i += 1
+            val nameLen = data[i].toInt() and 0xFF
+            i += 1
+            val name = if (nameLen > 0 && i + nameLen <= data.size) {
+                data.sliceArray(i until i + nameLen).decodeToString()
+            } else ""
+            i += nameLen
+
+            devices.add(ConnectedDevice(
+                mac = mac,
+                connected = connectionState == 0x02,
+                active = isActive,
+                name = name
+            ))
+        }
+        return devices
+    }
+}
+
+/** 解析 0x8200 通知能力响应，返回耳机支持的 eventCode 列表。 */
+object BroadcastCodesParser {
+    fun parse(data: ByteArray): List<Int>? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+        if (cmd != Cmd.BROADCAST_CODES_RESPONSE) return null
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+        if (data.size < payloadStart + payLen || payLen < 2) return null
+
+        val status = data[payloadStart].toInt() and 0xFF
+        if (status != 0x00) return null
+
+        val count = data[payloadStart + 1].toInt() and 0xFF
+        if (payLen < 2 + count) return null
+
+        return (0 until count).mapNotNull { i ->
+            val idx = payloadStart + 2 + i
+            if (idx < data.size) data[idx].toInt() and 0xFF else null
+        }
     }
 }

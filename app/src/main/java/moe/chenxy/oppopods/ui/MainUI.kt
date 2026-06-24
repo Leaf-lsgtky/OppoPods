@@ -48,6 +48,7 @@ import androidx.navigation3.ui.NavDisplay
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
+import moe.chenxy.oppopods.pods.BtLogStore
 import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.AssetKeys
 import moe.chenxy.oppopods.pods.DeviceProfile
@@ -81,6 +82,9 @@ sealed interface Screen : NavKey {
     data object AdvancedSettings : Screen
     data object Profiles : Screen
     data object About : Screen
+    data object MoreSettings : Screen
+    data object Debug : Screen
+    data object DebugLog : Screen
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -98,6 +102,11 @@ fun MainUI(
     val hookConnected = remember { mutableStateOf(false) }
     val gameMode = remember { mutableStateOf(false) }
     val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
+    val noiseLevel = remember { mutableStateOf(moe.chenxy.oppopods.pods.NoiseLevel.DEEP) }
+    val autoPlayPause = remember { mutableStateOf(false) }
+    val dualDevice = remember { mutableStateOf(false) }
+    val hookConnectedDevices = remember { mutableStateOf<List<moe.chenxy.oppopods.pods.ConnectedDevice>>(emptyList()) }
+    val hookConnectedDevicesReceived = remember { mutableStateOf(false) }
 
     val prefs = remember {
         context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
@@ -169,6 +178,9 @@ fun MainUI(
     }
 
     val activeProfile = remember { mutableStateOf(DeviceProfileStore.activeProfile(prefs)) }
+    val debugMode = remember { mutableStateOf(prefs.getBoolean("debug_mode", false)) }
+    val loggingEnabled = remember { mutableStateOf(prefs.getBoolean("bt_logging_enabled", false)) }
+    BtLogStore.isEnabled = loggingEnabled.value
     val appController = remember { AppRfcommController() }
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
@@ -176,6 +188,11 @@ fun MainUI(
     val appDeviceName by appController.deviceName.collectAsState()
     val appGameMode by appController.gameMode.collectAsState()
     val appSpatialAudioMode by appController.spatialAudioMode.collectAsState()
+    val appNoiseLevel by appController.noiseLevel.collectAsState()
+    val appAutoPlayPause by appController.autoPlayPause.collectAsState()
+    val appDualDevice by appController.dualDevice.collectAsState()
+    val appConnectedDevices by appController.connectedDevices.collectAsState()
+    val appConnectedDevicesReceived by appController.connectedDevicesReceived.collectAsState()
 
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
@@ -186,6 +203,11 @@ fun MainUI(
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
     val displaySpatialAudioMode = if (isStandaloneConnected) appSpatialAudioMode else spatialAudioMode.value
+    val displayNoiseLevel = if (isStandaloneConnected) appNoiseLevel else noiseLevel.value
+    val displayAutoPlayPause = if (isStandaloneConnected) appAutoPlayPause else autoPlayPause.value
+    val displayDualDevice = if (isStandaloneConnected) appDualDevice else dualDevice.value
+    val displayConnectedDevices = if (isStandaloneConnected) appConnectedDevices else hookConnectedDevices.value
+    val displayConnectedDevicesReceived = if (isStandaloneConnected) appConnectedDevicesReceived else hookConnectedDevicesReceived.value
     val displayTitle = when {
         hookConnected.value -> mainTitle.value
         isStandaloneConnected -> appDeviceName
@@ -229,6 +251,25 @@ fun MainUI(
                             .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
                     }
 
+                    OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED -> {
+                        noiseLevel.value = p1.getIntExtra("level", moe.chenxy.oppopods.pods.NoiseLevel.DEEP)
+                    }
+
+                    OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED -> {
+                        autoPlayPause.value = p1.getBooleanExtra("enabled", false)
+                    }
+
+                    OppoPodsAction.ACTION_PODS_DUAL_DEVICE_CHANGED -> {
+                        dualDevice.value = p1.getBooleanExtra("enabled", false)
+                        hookConnectedDevicesReceived.value = p1.getBooleanExtra("devices_received", false)
+                    }
+
+                    OppoPodsAction.ACTION_PODS_CONNECTED_DEVICES_CHANGED -> {
+                        val devices = p1.getParcelableArrayListExtra("devices", moe.chenxy.oppopods.pods.ConnectedDevice::class.java)
+                        hookConnectedDevices.value = devices ?: emptyList()
+                        hookConnectedDevicesReceived.value = p1.getBooleanExtra("devices_received", true)
+                    }
+
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
                         mainTitle.value = deviceName ?: ""
@@ -243,6 +284,13 @@ fun MainUI(
                             p0.finish()
                         }
                     }
+
+                    OppoPodsAction.ACTION_BT_LOG_ENTRY -> {
+                        val isSend = p1.getBooleanExtra(OppoPodsAction.EXTRA_BT_LOG_IS_SEND, false)
+                        val hex = p1.getStringExtra(OppoPodsAction.EXTRA_BT_LOG_HEX) ?: return
+                        val label = p1.getStringExtra(OppoPodsAction.EXTRA_BT_LOG_LABEL)
+                        BtLogStore.addFromBroadcast(isSend, hex, label)
+                    }
                 }
             }
         }
@@ -254,8 +302,13 @@ fun MainUI(
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_DUAL_DEVICE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_CONNECTED_DEVICES_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
+            addAction(OppoPodsAction.ACTION_BT_LOG_ENTRY)
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_UI_INIT).apply {
@@ -315,6 +368,45 @@ fun MainUI(
         spatialAudioMode.value = normalizedMode
         Intent(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET).apply {
             this.putExtra("mode", normalizedMode)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
+    fun setNoiseLevel(level: Int) {
+        if (isStandaloneConnected) {
+            appController.setNoiseLevel(level)
+            return
+        }
+        noiseLevel.value = level
+        Intent(OppoPodsAction.ACTION_NOISE_LEVEL_SET).apply {
+            this.putExtra("level", level)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
+    fun setAutoPlayPause(enabled: Boolean) {
+        if (isStandaloneConnected) {
+            appController.setAutoPlayPause(enabled)
+            return
+        }
+        autoPlayPause.value = enabled
+        Intent(OppoPodsAction.ACTION_AUTO_PLAY_PAUSE_SET).apply {
+            this.putExtra("enabled", enabled)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
+    fun setDualDevice(enabled: Boolean) {
+        if (isStandaloneConnected) {
+            appController.setDualDevice(enabled)
+            return
+        }
+        dualDevice.value = enabled
+        Intent(OppoPodsAction.ACTION_DUAL_DEVICE_SET).apply {
+            this.putExtra("enabled", enabled)
             setPackage("com.android.bluetooth")
             context.sendBroadcast(this)
         }
@@ -461,7 +553,11 @@ fun MainUI(
                             onSpatialAudioModeChange = { setSpatialAudioMode(it) },
                             adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
                             gameModeVisible = activeProfile.value.gameModeVisible,
-                            homeImageFile = ProfileAssets.file(context, activeProfile.value, AssetKeys.HOME_IMAGE)
+                            noiseLevelVisible = activeProfile.value.noiseLevelVisible,
+                            noiseLevel = displayNoiseLevel,
+                            onNoiseLevelChange = { setNoiseLevel(it) },
+                            homeImageFile = ProfileAssets.file(context, activeProfile.value, AssetKeys.HOME_IMAGE),
+                            onOpenMoreSettings = { backStack.add(Screen.MoreSettings) }
                         )
                         "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
                         "error" -> Box(Modifier.padding(padding).fillMaxSize()) { ErrorPage(onRetry = { appController.disconnect() }) }
@@ -543,7 +639,9 @@ fun MainUI(
                     },
                     onOpenAdvancedSettings = { backStack.add(Screen.AdvancedSettings) },
                     onOpenAbout = { backStack.add(Screen.About) },
-                    onOpenProfiles = { backStack.add(Screen.Profiles) }
+                    onOpenProfiles = { backStack.add(Screen.Profiles) },
+                    debugMode = debugMode.value,
+                    onOpenDebug = { backStack.add(Screen.Debug) }
                 )
             }
         }
@@ -672,8 +770,123 @@ fun MainUI(
         }
         entry<Screen.About> {
             AboutPage(
-                onBack = { backStack.removeLast() }
+                onBack = { backStack.removeLast() },
+                debugMode = debugMode.value,
+                onDebugModeChanged = { enabled ->
+                    debugMode.value = enabled
+                    prefs.edit().putBoolean("debug_mode", enabled).commit()
+                }
             )
+        }
+        entry<Screen.MoreSettings> {
+            val moreSettingsScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.more_settings),
+                        largeTitle = stringResource(R.string.more_settings),
+                        scrollBehavior = moreSettingsScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { backStack.removeLast() },
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                MoreSettingsPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(moreSettingsScrollBehavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    autoPlayPauseVisible = activeProfile.value.autoPlayPauseVisible,
+                    autoPlayPause = displayAutoPlayPause,
+                    onAutoPlayPauseChange = { setAutoPlayPause(it) },
+                    dualDeviceVisible = activeProfile.value.dualDeviceVisible,
+                    dualDevice = displayDualDevice,
+                    onDualDeviceChange = { setDualDevice(it) },
+                    connectedDevicesVisible = activeProfile.value.connectedDevicesVisible,
+                    connectedDevices = displayConnectedDevices,
+                    connectedDevicesReceived = displayConnectedDevicesReceived
+                )
+            }
+        }
+        entry<Screen.Debug> {
+            val debugScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.debug_mode),
+                        largeTitle = stringResource(R.string.debug_mode),
+                        scrollBehavior = debugScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { backStack.removeLast() },
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                DebugPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(debugScrollBehavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    loggingEnabled = loggingEnabled.value,
+                    onLoggingEnabledChange = {
+                        loggingEnabled.value = it
+                        BtLogStore.isEnabled = it
+                        prefs.edit().putBoolean("bt_logging_enabled", it).commit()
+                        if (it) {
+                            BtLogStore.addRecv(byteArrayOf(), "日志已启用，等待蓝牙数据...")
+                        }
+                    },
+                    onOpenLog = { backStack.add(Screen.DebugLog) }
+                )
+            }
+        }
+        entry<Screen.DebugLog> {
+            val logScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.debug_view_log),
+                        largeTitle = stringResource(R.string.debug_view_log),
+                        scrollBehavior = logScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { backStack.removeLast() },
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                DebugLogPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(logScrollBehavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    onClear = { BtLogStore.clear() }
+                )
+            }
         }
     }
 

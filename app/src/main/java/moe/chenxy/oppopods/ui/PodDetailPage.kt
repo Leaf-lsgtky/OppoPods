@@ -18,11 +18,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import moe.chenxy.oppopods.pods.NoiseLevel
 import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
@@ -39,8 +41,23 @@ fun PodDetailPage(
     onSpatialAudioModeChange: (Int) -> Unit = {},
     adaptiveModeEnabled: Boolean = true,
     gameModeVisible: Boolean = true,
-    homeImageFile: java.io.File? = null
+    noiseLevelVisible: Boolean = false,
+    noiseLevel: Int = NoiseLevel.DEEP,
+    onNoiseLevelChange: (Int) -> Unit = {},
+    homeImageFile: java.io.File? = null,
+    onOpenMoreSettings: () -> Unit = {}
 ) {
+    val noiseLevelOptions = listOf(
+        stringResource(R.string.noise_level_smart),
+        stringResource(R.string.noise_level_light),
+        stringResource(R.string.noise_level_medium),
+        stringResource(R.string.noise_level_deep)
+    )
+    val noiseLevelValues = NoiseLevel.ALL
+    val currentNoiseLevelIndex = noiseLevelValues
+        .indexOf(noiseLevel)
+        .takeIf { it >= 0 }
+        ?: 3
     val spatialAudioModes = listOf(
         SpatialAudioMode.OFF,
         SpatialAudioMode.FIXED,
@@ -103,6 +120,21 @@ fun PodDetailPage(
             }
         }
 
+        if (noiseLevelVisible && ancMode == NoiseControlMode.NOISE_CANCELLATION) {
+            item {
+                Card(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.noise_level_title),
+                        items = noiseLevelOptions,
+                        selectedIndex = currentNoiseLevelIndex,
+                        onSelectedIndexChange = { onNoiseLevelChange(noiseLevelValues[it]) }
+                    )
+                }
+            }
+        }
+
         item {
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp)
@@ -120,6 +152,17 @@ fun PodDetailPage(
                     items = spatialAudioOptions,
                     selectedIndex = spatialAudioSelectedIndex,
                     onSelectedIndexChange = { onSpatialAudioModeChange(spatialAudioModes[it]) }
+                )
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                ArrowPreference(
+                    title = stringResource(R.string.more_settings),
+                    onClick = onOpenMoreSettings
                 )
             }
         }

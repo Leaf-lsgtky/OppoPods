@@ -26,6 +26,10 @@ object DeviceProfileStore {
         name = "OPPO Enco X3",
         adaptiveVisible = false,
         gameModeVisible = true,
+        noiseLevelVisible = true,
+        autoPlayPauseVisible = true,
+        dualDeviceVisible = true,
+        connectedDevicesVisible = true,
         commands = mapOf(
             ProfileKeys.ANC_OFF to PodCommand(Cmd.SET_ANC, payload = "01 01 01"),
             ProfileKeys.ANC_NC to PodCommand(Cmd.SET_ANC, payload = "01 01 02"),
@@ -44,6 +48,14 @@ object DeviceProfileStore {
                 Cmd.QUERY_STATUS, seq = 0x00,
                 payload = "0B 05 04 0B 11 13 18 06 1B 1C 27 28"
             ),
+            ProfileKeys.SET_NOISE_LEVEL_SMART to PodCommand(Cmd.SET_ANC, payload = "01 01 80"),
+            ProfileKeys.SET_NOISE_LEVEL_LIGHT to PodCommand(Cmd.SET_ANC, payload = "01 01 40"),
+            ProfileKeys.SET_NOISE_LEVEL_MEDIUM to PodCommand(Cmd.SET_ANC, payload = "01 01 20"),
+            ProfileKeys.SET_NOISE_LEVEL_DEEP to PodCommand(Cmd.SET_ANC, payload = "01 01 10"),
+            ProfileKeys.SET_AUTO_PLAY_PAUSE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "04 01"),
+            ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "04 00"),
+            ProfileKeys.SET_DUAL_DEVICE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "11 01"),
+            ProfileKeys.SET_DUAL_DEVICE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "11 00"),
         ),
         assets = mapOf(
             AssetKeys.HOME_IMAGE to "img_box.png",
@@ -59,6 +71,10 @@ object DeviceProfileStore {
         name = "OPPO Enco Free4",
         adaptiveVisible = true,
         gameModeVisible = true,
+        noiseLevelVisible = true,
+        autoPlayPauseVisible = true,
+        dualDeviceVisible = true,
+        connectedDevicesVisible = true,
         commands = mapOf(
             ProfileKeys.ANC_OFF to PodCommand(Cmd.SET_ANC, payload = "01 01 01"),
             ProfileKeys.ANC_NC to PodCommand(Cmd.SET_ANC, payload = "01 01 02"),
@@ -77,6 +93,14 @@ object DeviceProfileStore {
                 Cmd.QUERY_STATUS, seq = 0x00,
                 payload = "0B 05 04 0B 11 13 18 06 1B 1C 27 28"
             ),
+            ProfileKeys.SET_NOISE_LEVEL_SMART to PodCommand(Cmd.SET_ANC, payload = "01 01 80"),
+            ProfileKeys.SET_NOISE_LEVEL_LIGHT to PodCommand(Cmd.SET_ANC, payload = "01 01 40"),
+            ProfileKeys.SET_NOISE_LEVEL_MEDIUM to PodCommand(Cmd.SET_ANC, payload = "01 01 20"),
+            ProfileKeys.SET_NOISE_LEVEL_DEEP to PodCommand(Cmd.SET_ANC, payload = "01 01 10"),
+            ProfileKeys.SET_AUTO_PLAY_PAUSE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "04 01"),
+            ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "04 00"),
+            ProfileKeys.SET_DUAL_DEVICE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "11 01"),
+            ProfileKeys.SET_DUAL_DEVICE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "11 00"),
         ),
         assets = mapOf(
             AssetKeys.HOME_IMAGE to "img_box.png",
