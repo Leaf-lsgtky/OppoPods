@@ -18,11 +18,14 @@
     <string name="spatial_audio">空间音频</string>
     <string name="spatial_audio_fixed">固定</string>
     <string name="spatial_audio_head_tracking">头部跟踪</string>
+    <string name="spatial_sound">空间音效</string>
+    <string name="spatial_sound_summary">启用 3D 空间音效</string>
     <string name="milink_spatial_audio_option">在 MiLink 卡片添加空间音频选项</string>
     <string name="custom_button_function">自定义按钮</string>
     <string name="custom_button_function_none">无</string>
     <string name="custom_button_function_game_mode">游戏模式</string>
     <string name="custom_button_function_adaptive">打开自适应模式</string>
+    <string name="custom_button_function_spatial_sound">空间音效</string>
     <string name="device_profiles">设备配置</string>
     <string name="profiles_import">导入配置</string>
     <string name="profiles_export">导出当前配置</string>

@@ -39,6 +39,10 @@ fun PodDetailPage(
     onGameModeChange: (Boolean) -> Unit = {},
     spatialAudioMode: Int = SpatialAudioMode.OFF,
     onSpatialAudioModeChange: (Int) -> Unit = {},
+    spatialAudioVisible: Boolean = false,
+    spatialSound: Boolean = false,
+    onSpatialSoundChange: (Boolean) -> Unit = {},
+    spatialSoundVisible: Boolean = false,
     adaptiveModeEnabled: Boolean = true,
     gameModeVisible: Boolean = true,
     noiseLevelVisible: Boolean = false,
@@ -157,12 +161,22 @@ fun PodDetailPage(
                         onCheckedChange = onGameModeChange
                     )
                 }
-                OverlayDropdownPreference(
-                    title = stringResource(R.string.spatial_audio),
-                    items = spatialAudioOptions,
-                    selectedIndex = spatialAudioSelectedIndex,
-                    onSelectedIndexChange = { onSpatialAudioModeChange(spatialAudioModes[it]) }
-                )
+                if (spatialAudioVisible) {
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.spatial_audio),
+                        items = spatialAudioOptions,
+                        selectedIndex = spatialAudioSelectedIndex,
+                        onSelectedIndexChange = { onSpatialAudioModeChange(spatialAudioModes[it]) }
+                    )
+                }
+                if (spatialSoundVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.spatial_sound),
+                        summary = stringResource(R.string.spatial_sound_summary),
+                        checked = spatialSound,
+                        onCheckedChange = onSpatialSoundChange
+                    )
+                }
             }
         }
 

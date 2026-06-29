@@ -30,6 +30,8 @@ object DeviceProfileStore {
         autoPlayPauseVisible = true,
         dualDeviceVisible = true,
         connectedDevicesVisible = true,
+        spatialAudioVisible = true,
+        spatialSoundVisible = false,
         commands = mapOf(
             ProfileKeys.ANC_OFF to PodCommand(Cmd.SET_ANC, payload = "01 01 01"),
             ProfileKeys.ANC_NC to PodCommand(Cmd.SET_ANC, payload = "01 01 02"),
@@ -54,6 +56,8 @@ object DeviceProfileStore {
             ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "04 00"),
             ProfileKeys.SET_DUAL_DEVICE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "11 01"),
             ProfileKeys.SET_DUAL_DEVICE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "11 00"),
+            ProfileKeys.SPATIAL_SOUND_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "1B 01"),
+            ProfileKeys.SPATIAL_SOUND_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "1B 00"),
         ),
         assets = mapOf(
             AssetKeys.HOME_IMAGE to "img_box.png",
@@ -73,6 +77,8 @@ object DeviceProfileStore {
         autoPlayPauseVisible = true,
         dualDeviceVisible = true,
         connectedDevicesVisible = true,
+        spatialAudioVisible = false,
+        spatialSoundVisible = true,
         commands = mapOf(
             ProfileKeys.ANC_OFF to PodCommand(Cmd.SET_ANC, payload = "01 01 01"),
             ProfileKeys.ANC_NC to PodCommand(Cmd.SET_ANC, payload = "01 01 02"),
@@ -97,6 +103,8 @@ object DeviceProfileStore {
             ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "04 00"),
             ProfileKeys.SET_DUAL_DEVICE_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "11 01"),
             ProfileKeys.SET_DUAL_DEVICE_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "11 00"),
+            ProfileKeys.SPATIAL_SOUND_ON to PodCommand(Cmd.SET_GAME_MODE, payload = "1B 01"),
+            ProfileKeys.SPATIAL_SOUND_OFF to PodCommand(Cmd.SET_GAME_MODE, payload = "1B 00"),
         ),
         assets = mapOf(
             AssetKeys.HOME_IMAGE to "img_box.png",

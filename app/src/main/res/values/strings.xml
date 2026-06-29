@@ -17,11 +17,14 @@
     <string name="spatial_audio">Spatial audio</string>
     <string name="spatial_audio_fixed">Fixed</string>
     <string name="spatial_audio_head_tracking">Head tracking</string>
+    <string name="spatial_sound">Spatial Sound</string>
+    <string name="spatial_sound_summary">Enable 3D spatial sound effect</string>
     <string name="milink_spatial_audio_option">Add spatial audio option to MiLink card</string>
     <string name="custom_button_function">Custom button</string>
     <string name="custom_button_function_none">None</string>
     <string name="custom_button_function_game_mode">Game mode</string>
     <string name="custom_button_function_adaptive">Enable adaptive mode</string>
+    <string name="custom_button_function_spatial_sound">Spatial sound</string>
     <string name="device_profiles">Device profiles</string>
     <string name="profiles_import">Import profile</string>
     <string name="profiles_export">Export current profile</string>

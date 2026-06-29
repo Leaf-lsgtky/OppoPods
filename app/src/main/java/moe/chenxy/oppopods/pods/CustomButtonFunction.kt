@@ -5,7 +5,8 @@ package moe.chenxy.oppopods.pods
 enum class CustomButtonFunction(val preferenceValue: String) {
     NONE("none"),
     GAME_MODE("game_mode"),
-    ADAPTIVE("adaptive");
+    ADAPTIVE("adaptive"),
+    SPATIAL_SOUND("spatial_sound");
 
     companion object {
         const val PREF_KEY = "custom_button_function"

@@ -36,6 +36,9 @@ object MiLinkServiceHook : HookContext() {
     private const val GAME_MODE_SUBTITLE_ON = "已开启"
     private const val GAME_MODE_SUBTITLE_OFF = "已关闭"
     private const val ADAPTIVE_TITLE = "自适应模式"
+    private const val SPATIAL_SOUND_TITLE = "空间音效"
+    private const val SPATIAL_SOUND_SUBTITLE_ON = "已开启"
+    private const val SPATIAL_SOUND_SUBTITLE_OFF = "已关闭"
     private const val ANC_ADAPTIVE = 4
     private const val FIND_RING_HIDDEN = -1
     private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
@@ -48,6 +51,7 @@ object MiLinkServiceHook : HookContext() {
     private var currentAnc = 1
     private var currentGameMode = false
     private var currentSpatialAudioMode = SpatialAudioMode.OFF
+    private var currentSpatialSound = false
     private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
     private var customButtonFunction = CustomButtonFunction.GAME_MODE
     @Volatile
@@ -107,12 +111,25 @@ object MiLinkServiceHook : HookContext() {
         icon = { null },
     )
 
+    // 空间音效：toggle 开关，与游戏模式同结构
+    private val spatialSoundHandler = CustomButtonHandler(
+        isActive = { currentSpatialSound },
+        onToggle = { enabled, ctx ->
+            currentSpatialSound = enabled
+            sendOppoSpatialSound(enabled, ctx)
+        },
+        title = { SPATIAL_SOUND_TITLE },
+        subtitle = { active -> if (active) SPATIAL_SOUND_SUBTITLE_ON else SPATIAL_SOUND_SUBTITLE_OFF },
+        icon = { null },
+    )
+
     // 返回当前自定义按钮功能对应的 handler；NONE → null（控件隐藏）
     private fun activeHandler(): CustomButtonHandler? {
         loadState()
         return when (customButtonFunction) {
             CustomButtonFunction.GAME_MODE -> gameModeHandler
             CustomButtonFunction.ADAPTIVE -> adaptiveHandler
+            CustomButtonFunction.SPATIAL_SOUND -> spatialSoundHandler
             CustomButtonFunction.NONE -> null
         }
     }
@@ -531,6 +548,7 @@ object MiLinkServiceHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED)
             addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
             addAction(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED)
         }
@@ -583,8 +601,15 @@ object MiLinkServiceHook : HookContext() {
                         saveState(context)
                         notifySpatialUiChanged()
                     }
+                    OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED -> {
+                        currentAddress = intent.getStringExtra("address") ?: currentAddress
+                        currentSpatialSound = intent.getBooleanExtra("enabled", currentSpatialSound)
+                        currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
+                        saveState(context)
+                        notifyFindRingChanged()
+                    }
                 }
-                Log.d(TAG, "state action=${intent?.action} address=$currentAddress name=$currentName anc=$currentAnc gameMode=$currentGameMode spatial=$currentSpatialAudioMode miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled rawBattery=${currentBattery.debugString()} miLinkBattery=${miLinkBatteryLevels()}")
+                Log.d(TAG, "state action=${intent?.action} address=$currentAddress name=$currentName anc=$currentAnc gameMode=$currentGameMode spatial=$currentSpatialAudioMode spatialSound=$currentSpatialSound miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled rawBattery=${currentBattery.debugString()} miLinkBattery=${miLinkBatteryLevels()}")
             }
         }, filter, Context.RECEIVER_EXPORTED)
         receiverRegistered = true
@@ -846,6 +871,20 @@ object MiLinkServiceHook : HookContext() {
             ctx.sendBroadcast(this)
         }
         Log.d(TAG, "sendOppoSpatialAudio broadcast sent mode=$mode")
+    }
+
+    private fun sendOppoSpatialSound(enabled: Boolean, fallbackContext: Context? = null) {
+        val ctx = fallbackContext ?: context ?: run {
+            Log.w(TAG, "sendOppoSpatialSound skipped: context is null enabled=$enabled")
+            return
+        }
+        Intent(OppoPodsAction.ACTION_SPATIAL_SOUND_SET).apply {
+            putExtra("enabled", enabled)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            ctx.sendBroadcast(this)
+        }
+        Log.d(TAG, "sendOppoSpatialSound broadcast sent enabled=$enabled")
     }
 
     private fun sendSpatialChanged(mode: Int, fallbackContext: Context? = null) {

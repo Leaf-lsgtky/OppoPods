@@ -29,6 +29,8 @@ data class DeviceProfile(
     val autoPlayPauseVisible: Boolean = false,
     val dualDeviceVisible: Boolean = false,
     val connectedDevicesVisible: Boolean = false,
+    val spatialAudioVisible: Boolean = false,
+    val spatialSoundVisible: Boolean = false,
     val commands: Map<String, PodCommand> = emptyMap(),
     val flags: Map<String, Boolean> = emptyMap(),
     val assets: Map<String, String> = emptyMap(),
@@ -88,6 +90,10 @@ data class DeviceProfile(
     fun autoPlayPausePacket(enabled: Boolean): ByteArray =
         packet(if (enabled) ProfileKeys.SET_AUTO_PLAY_PAUSE_ON else ProfileKeys.SET_AUTO_PLAY_PAUSE_OFF)
 
+    /** 空间音效整包。 */
+    fun spatialSoundPacket(enabled: Boolean): ByteArray =
+        packet(if (enabled) ProfileKeys.SPATIAL_SOUND_ON else ProfileKeys.SPATIAL_SOUND_OFF)
+
     /** 双设备连接整包。 */
     fun dualDevicePacket(enabled: Boolean): ByteArray =
         packet(if (enabled) ProfileKeys.SET_DUAL_DEVICE_ON else ProfileKeys.SET_DUAL_DEVICE_OFF)
@@ -121,6 +127,8 @@ object ProfileKeys {
     const val SPATIAL_OFF = "spatial_off"
     const val SPATIAL_FIXED = "spatial_fixed"
     const val SPATIAL_HEAD = "spatial_head"
+    const val SPATIAL_SOUND_ON = "spatial_sound_on"
+    const val SPATIAL_SOUND_OFF = "spatial_sound_off"
     const val QUERY_BATTERY = "query_battery"
     const val QUERY_ANC = "query_anc"
     const val QUERY_STATUS = "query_status"

@@ -57,6 +57,7 @@ import moe.chenxy.oppopods.pods.ProfileAssets
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.pods.SpatialAudioMode
+import moe.chenxy.oppopods.utils.SaveOnHideEffect
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
@@ -102,6 +103,7 @@ fun MainUI(
     val hookConnected = remember { mutableStateOf(false) }
     val gameMode = remember { mutableStateOf(false) }
     val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
+    val spatialSound = remember { mutableStateOf(false) }
     val noiseLevel = remember { mutableStateOf(moe.chenxy.oppopods.pods.NoiseLevel.DEEP) }
     val smartAncLevel = remember { mutableStateOf(-1) }
     val autoPlayPause = remember { mutableStateOf(false) }
@@ -189,6 +191,7 @@ fun MainUI(
     val appDeviceName by appController.deviceName.collectAsState()
     val appGameMode by appController.gameMode.collectAsState()
     val appSpatialAudioMode by appController.spatialAudioMode.collectAsState()
+    val appSpatialSound by appController.spatialSound.collectAsState()
     val appNoiseLevel by appController.noiseLevel.collectAsState()
     val appSmartAncLevel by appController.smartAncLevel.collectAsState()
     val appAutoPlayPause by appController.autoPlayPause.collectAsState()
@@ -205,6 +208,7 @@ fun MainUI(
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
     val displaySpatialAudioMode = if (isStandaloneConnected) appSpatialAudioMode else spatialAudioMode.value
+    val displaySpatialSound = if (isStandaloneConnected) appSpatialSound else spatialSound.value
     val displayNoiseLevel = if (isStandaloneConnected) appNoiseLevel else noiseLevel.value
     val displaySmartAncLevel = if (isStandaloneConnected) appSmartAncLevel else smartAncLevel.value
     val displayAutoPlayPause = if (isStandaloneConnected) appAutoPlayPause else autoPlayPause.value
@@ -252,6 +256,10 @@ fun MainUI(
                     OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED -> {
                         spatialAudioMode.value = p1.getIntExtra("mode", SpatialAudioMode.OFF)
                             .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
+                    }
+
+                    OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED -> {
+                        spatialSound.value = p1.getBooleanExtra("enabled", false)
                     }
 
                     OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED -> {
@@ -309,6 +317,7 @@ fun MainUI(
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SMART_ANC_LEVEL_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_AUTO_PLAY_PAUSE_CHANGED)
@@ -376,6 +385,19 @@ fun MainUI(
         spatialAudioMode.value = normalizedMode
         Intent(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET).apply {
             this.putExtra("mode", normalizedMode)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
+    fun setSpatialSound(enabled: Boolean) {
+        if (isStandaloneConnected) {
+            appController.setSpatialSound(enabled)
+            return
+        }
+        spatialSound.value = enabled
+        Intent(OppoPodsAction.ACTION_SPATIAL_SOUND_SET).apply {
+            this.putExtra("enabled", enabled)
             setPackage("com.android.bluetooth")
             context.sendBroadcast(this)
         }
@@ -485,6 +507,32 @@ fun MainUI(
         }
     }
 
+    // 配置切换时：隐藏的 UI 自动关闭，重新显示时恢复原值
+    SaveOnHideEffect(
+        visible = activeProfile.value.spatialAudioVisible,
+        currentValue = milinkSpatialAudioOptionEnabled.value,
+        hiddenValue = false,
+        onValueChange = { enabled ->
+            milinkSpatialAudioOptionEnabled.value = enabled
+            prefs.edit()
+                .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, enabled)
+                .commit()
+            broadcastMilinkSpatialAudioOption(enabled)
+        }
+    )
+    SaveOnHideEffect(
+        visible = activeProfile.value.spatialAudioVisible,
+        currentValue = displaySpatialAudioMode,
+        hiddenValue = SpatialAudioMode.OFF,
+        onValueChange = { setSpatialAudioMode(it) }
+    )
+    SaveOnHideEffect(
+        visible = activeProfile.value.spatialSoundVisible,
+        currentValue = displaySpatialSound,
+        hiddenValue = false,
+        onValueChange = { setSpatialSound(it) }
+    )
+
     fun broadcastCustomButtonFunction(value: String) {
         Intent(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED).apply {
             setPackage("com.milink.service")
@@ -559,6 +607,10 @@ fun MainUI(
                             onGameModeChange = { setGameMode(it) },
                             spatialAudioMode = displaySpatialAudioMode,
                             onSpatialAudioModeChange = { setSpatialAudioMode(it) },
+                            spatialAudioVisible = activeProfile.value.spatialAudioVisible,
+                            spatialSound = displaySpatialSound,
+                            onSpatialSoundChange = { setSpatialSound(it) },
+                            spatialSoundVisible = activeProfile.value.spatialSoundVisible,
                             adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
                             gameModeVisible = activeProfile.value.gameModeVisible,
                             noiseLevelVisible = activeProfile.value.noiseLevelVisible,
@@ -730,6 +782,8 @@ fun MainUI(
                             .apply()
                     },
                     adaptiveVisible = activeProfile.value.adaptiveVisible,
+                    spatialAudioVisible = activeProfile.value.spatialAudioVisible,
+                    spatialSoundVisible = activeProfile.value.spatialSoundVisible,
                     showConnectionPopup = showConnectionPopup,
                     onShowConnectionPopupChange = {
                         showConnectionPopup.value = it

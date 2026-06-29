@@ -14,6 +14,8 @@ object OppoPodsAction {
     const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
     const val ACTION_SPATIAL_AUDIO_SET = "chen.action.oppopods.spatial_audio_set"
     const val ACTION_PODS_SPATIAL_AUDIO_CHANGED = "chen.action.oppopods.pods_spatial_audio_changed"
+    const val ACTION_SPATIAL_SOUND_SET = "chen.action.oppopods.spatial_sound_set"
+    const val ACTION_PODS_SPATIAL_SOUND_CHANGED = "chen.action.oppopods.pods_spatial_sound_changed"
     const val ACTION_NOISE_LEVEL_SET = "chen.action.oppopods.noise_level_set"
     const val ACTION_PODS_NOISE_LEVEL_CHANGED = "chen.action.oppopods.pods_noise_level_changed"
     const val ACTION_PODS_SMART_ANC_LEVEL_CHANGED = "chen.action.oppopods.pods_smart_anc_level_changed"
