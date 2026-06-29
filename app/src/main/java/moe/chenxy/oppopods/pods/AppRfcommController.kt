@@ -71,6 +71,9 @@ class AppRfcommController {
     private val _dualDevice = MutableStateFlow(false)
     val dualDevice: StateFlow<Boolean> = _dualDevice
 
+    private val _spatialSound = MutableStateFlow(false)
+    val spatialSound: StateFlow<Boolean> = _spatialSound
+
     private val _connectedDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     val connectedDevices: StateFlow<List<ConnectedDevice>> = _connectedDevices
 
@@ -104,6 +107,8 @@ class AppRfcommController {
                 startPacketReader(socket!!.inputStream)
 
                 delay(300)
+                sendPacket(OppoPackets.buildHandshake())
+                delay(200)
                 sendPacket(OppoPackets.buildQueryBroadcastCodes())
 
                 delay(300)
@@ -236,11 +241,12 @@ class AppRfcommController {
             return
         }
 
-        // Try parse batch status for autoPlayPause / dualDevice
+        // Try parse batch status for autoPlayPause / dualDevice / spatialSound
         val batchStatus = GameModeParser.parseStatus(packet)
         if (batchStatus != null) {
             batchStatus.autoPlayPause?.let { _autoPlayPause.value = it }
             batchStatus.dualDevice?.let { _dualDevice.value = it }
+            batchStatus.spatialSound?.let { _spatialSound.value = it }
             return
         }
 
@@ -310,6 +316,11 @@ class AppRfcommController {
         scope.launch { sendPacket(profile.dualDevicePacket(enabled)) }
     }
 
+    fun setSpatialSound(enabled: Boolean) {
+        _spatialSound.value = enabled
+        scope.launch { sendPacket(profile.spatialSoundPacket(enabled)) }
+    }
+
     fun setANCMode(mode: NoiseControlMode) {
         val ancInt = when (mode) {
             NoiseControlMode.OFF -> 1
@@ -364,6 +375,7 @@ class AppRfcommController {
         _smartAncLevel.value = -1
         _autoPlayPause.value = false
         _dualDevice.value = false
+        _spatialSound.value = false
         _connectedDevices.value = emptyList()
         _connectedDevicesReceived.value = false
     }

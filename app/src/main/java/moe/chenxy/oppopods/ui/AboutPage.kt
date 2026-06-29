@@ -208,6 +208,8 @@ fun AdvancedSettingsPage(
     rfcommConnectionMethod: MutableState<RfcommConnectionMethod> = mutableStateOf(RfcommConnectionMethod.UUID),
     onRfcommConnectionMethodChange: (RfcommConnectionMethod) -> Unit = {},
     adaptiveVisible: Boolean = true,
+    spatialAudioVisible: Boolean = false,
+    spatialSoundVisible: Boolean = false,
     showConnectionPopup: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_POPUP),
     onShowConnectionPopupChange: (Boolean) -> Unit = {},
@@ -230,6 +232,7 @@ fun AdvancedSettingsPage(
         stringResource(R.string.custom_button_function_game_mode)
     ).apply {
         if (adaptiveVisible) add(stringResource(R.string.custom_button_function_adaptive))
+        if (spatialSoundVisible) add(stringResource(R.string.custom_button_function_spatial_sound))
     }
     val popupDismissSecondOptions = OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS
     val popupDismissSecondLabels = popupDismissSecondOptions.map {
@@ -255,14 +258,20 @@ fun AdvancedSettingsPage(
                 OverlayDropdownPreference(
                     title = stringResource(R.string.custom_button_function),
                     items = customButtonFunctionOptions,
-                    selectedIndex = if (adaptiveVisible) {
-                        CustomButtonFunction.selectedIndexOf(customButtonFunction.value)
-                    } else {
-                        CustomButtonFunction.selectedIndexOf(customButtonFunction.value).coerceAtMost(1)
+                    selectedIndex = run {
+                        val enumIndex = CustomButtonFunction.selectedIndexOf(customButtonFunction.value)
+                        // Build list of visible enum indices in order
+                        val visibleIndices = mutableListOf(0, 1) // NONE, GAME_MODE always visible
+                        if (adaptiveVisible) visibleIndices.add(2) // ADAPTIVE
+                        if (spatialSoundVisible) visibleIndices.add(3) // SPATIAL_SOUND
+                        visibleIndices.indexOf(enumIndex).takeIf { it >= 0 } ?: 0
                     },
                     onSelectedIndexChange = { index ->
-                        val mapped = if (!adaptiveVisible && index >= 1) index + 1 else index
-                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(mapped))
+                        val visibleIndices = mutableListOf(0, 1)
+                        if (adaptiveVisible) visibleIndices.add(2)
+                        if (spatialSoundVisible) visibleIndices.add(3)
+                        val enumIndex = visibleIndices.getOrElse(index) { index }
+                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(enumIndex))
                     }
                 )
                 OverlayDropdownPreference(
@@ -294,11 +303,13 @@ fun AdvancedSettingsPage(
                     checked = openHeyTap.value,
                     onCheckedChange = { onOpenHeyTapChange(it) }
                 )
-                SwitchPreference(
-                    title = stringResource(R.string.milink_spatial_audio_option),
-                    checked = milinkSpatialAudioOptionEnabled.value,
-                    onCheckedChange = { onMilinkSpatialAudioOptionEnabledChange(it) }
-                )
+                if (spatialAudioVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.milink_spatial_audio_option),
+                        checked = milinkSpatialAudioOptionEnabled.value,
+                        onCheckedChange = { onMilinkSpatialAudioOptionEnabledChange(it) }
+                    )
+                }
             }
         }
     }
@@ -346,7 +357,7 @@ fun MoreSettingsPage(
                         onCheckedChange = onDualDeviceChange
                     )
                 }
-                if (dualDevice && connectedDevicesVisible) {
+                if (connectedDevicesVisible) {
                     if (!connectedDevicesReceived) {
                         // 等待耳机推送设备列表
                     } else if (connectedDevices.isEmpty()) {

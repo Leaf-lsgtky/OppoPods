@@ -65,6 +65,7 @@ object RfcommController {
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
     private var currentSpatialAudioMode: Int = SpatialAudioMode.OFF
+    private var currentSpatialSound: Boolean = false
     private var currentNoiseLevel: Int = NoiseLevel.DEEP
     /** -1 = unknown / not in smart mode; otherwise a [NoiseLevel] constant of the
      *  level smart mode is currently auto-applying (LIGHT/MEDIUM/DEEP). */
@@ -150,6 +151,18 @@ object RfcommController {
         }
         sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED) {
             putExtra("mode", normalizedMode)
+        }
+    }
+
+    private fun changeUISpatialSoundStatus(enabled: Boolean) {
+        Intent(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED).apply {
+            this.putExtra("enabled", enabled)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED) {
+            putExtra("enabled", enabled)
         }
     }
 
@@ -294,6 +307,7 @@ object RfcommController {
                 changeUIAncStatus(currentAnc)
                 changeUIGameModeStatus(currentGameMode)
                 changeUISpatialAudioStatus(currentSpatialAudioMode)
+                changeUISpatialSoundStatus(currentSpatialSound)
                 changeUINoiseLevelStatus(currentNoiseLevel)
                 changeUISmartAncLevel(currentSmartAncLevel)
                 changeUIAutoPlayPauseStatus(currentAutoPlayPause)
@@ -327,6 +341,10 @@ object RfcommController {
             OppoPodsAction.ACTION_SPATIAL_AUDIO_SET -> {
                 val mode = intent.getIntExtra("mode", SpatialAudioMode.OFF)
                 setSpatialAudioMode(mode)
+            }
+            OppoPodsAction.ACTION_SPATIAL_SOUND_SET -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                setSpatialSound(enabled)
             }
             OppoPodsAction.ACTION_NOISE_LEVEL_SET -> {
                 val level = intent.getIntExtra("level", NoiseLevel.DEEP)
@@ -540,6 +558,7 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
             this.addAction(OppoPodsAction.ACTION_SPATIAL_AUDIO_SET)
+            this.addAction(OppoPodsAction.ACTION_SPATIAL_SOUND_SET)
             this.addAction(OppoPodsAction.ACTION_NOISE_LEVEL_SET)
             this.addAction(OppoPodsAction.ACTION_AUTO_PLAY_PAUSE_SET)
             this.addAction(OppoPodsAction.ACTION_DUAL_DEVICE_SET)
@@ -574,6 +593,8 @@ object RfcommController {
 
             if (initialConnected) {
                 delay(300)
+                sendPacketSafe(OppoPackets.buildHandshake(), "handshake")
+                delay(200)
                 sendPacketSafe(OppoPackets.buildQueryBroadcastCodes(), "query broadcast codes")
                 delay(300)
                 sendStatusQueryPackets()
@@ -815,7 +836,7 @@ object RfcommController {
             return
         }
 
-        // Try parse batch status for autoPlayPause / dualDevice
+        // Try parse batch status for autoPlayPause / dualDevice / spatialSound
         val batchStatus = GameModeParser.parseStatus(packet)
         if (batchStatus != null) {
             batchStatus.autoPlayPause?.let {
@@ -825,6 +846,10 @@ object RfcommController {
             batchStatus.dualDevice?.let {
                 currentDualDevice = it
                 changeUIDualDeviceStatus(it)
+            }
+            batchStatus.spatialSound?.let {
+                currentSpatialSound = it
+                changeUISpatialSoundStatus(it)
             }
             return
         }
@@ -888,6 +913,7 @@ object RfcommController {
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
         currentSpatialAudioMode = SpatialAudioMode.OFF
+        currentSpatialSound = false
         currentConnectedDevices = emptyList()
         currentConnectedDevicesReceived = false
         cachedDeviceName = ""
@@ -953,6 +979,15 @@ object RfcommController {
         changeUISpatialAudioStatus(normalizedMode)
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(activeProfile.spatialPacket(normalizedMode), "set spatial audio mode")
+        }
+    }
+
+    fun setSpatialSound(enabled: Boolean) {
+        Log.d(TAG, "setSpatialSound: $enabled")
+        currentSpatialSound = enabled
+        changeUISpatialSoundStatus(enabled)
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(activeProfile.spatialSoundPacket(enabled), "set spatial sound")
         }
     }
 

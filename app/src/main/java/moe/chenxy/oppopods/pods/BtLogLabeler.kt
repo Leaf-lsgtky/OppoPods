@@ -24,11 +24,15 @@ object BtLogLabeler {
                     }
                 } else "设置ANC"
             }
-            Cmd.SET_GAME_MODE -> "切换功能开关"
+            Cmd.SET_GAME_MODE -> {
+                if (payload.isNotEmpty() && (payload[0].toInt() and 0xFF) == 0x1B) "切换空间音效"
+                else "切换功能开关"
+            }
             Cmd.SET_SPATIAL_AUDIO -> "切换空间音频"
             Cmd.QUERY_BATTERY -> "查询电量"
             Cmd.QUERY_ANC_MODE -> "查询ANC模式"
             Cmd.QUERY_STATUS -> "查询状态"
+            Cmd.HANDSHAKE -> "握手"
             Cmd.QUERY_BROADCAST_CODES -> "查询通知能力"
             Cmd.SUBSCRIBE_BROADCAST -> "订阅通知"
             else -> null
@@ -46,7 +50,11 @@ object BtLogLabeler {
             Cmd.BATTERY_RESPONSE -> "电量查询响应"
             Cmd.ANC_MODE_RESPONSE -> "ANC模式查询响应"
             Cmd.QUERY_STATUS_RESPONSE -> "状态查询响应"
-            Cmd.SET_GAME_MODE_RESPONSE -> "功能开关响应"
+            Cmd.HANDSHAKE_RESPONSE -> "握手响应"
+            Cmd.SET_GAME_MODE_RESPONSE -> {
+                if (payload.size >= 2 && (payload[0].toInt() and 0xFF) == 0x1B) "空间音效响应"
+                else "功能开关响应"
+            }
             Cmd.SET_SPATIAL_AUDIO_RESPONSE -> "空间音频响应"
             Cmd.BROADCAST_CODES_RESPONSE -> "通知能力响应"
             Cmd.SUBSCRIBE_BROADCAST_RESPONSE -> "订阅通知响应"

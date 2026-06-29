@@ -56,6 +56,9 @@ object OppoPackets {
         return packet
     }
 
+    /** Handshake (query remote capability): 0x0100 */
+    fun buildHandshake(): ByteArray = buildPacket(Cmd.HANDSHAKE)
+
     /** Query notification capability: 0x0200 */
     fun buildQueryBroadcastCodes(): ByteArray = buildPacket(Cmd.QUERY_BROADCAST_CODES)
 
@@ -139,6 +142,7 @@ object GameModeFeature {
 object BatchParamId {
     const val AUTO_PLAY_PAUSE = 0x04
     const val DUAL_DEVICE = 0x11
+    const val SPATIAL_SOUND = 0x1B
 }
 
 /** Spatial audio mode values. */
@@ -176,6 +180,10 @@ object Cmd {
     const val SET_SPATIAL_AUDIO_RESPONSE = 0x8422
     /** Spatial audio mode notification */
     const val SPATIAL_AUDIO_NOTIFY = 0x0510
+    /** Query remote capability (handshake) */
+    const val HANDSHAKE = 0x0100
+    /** Handshake response */
+    const val HANDSHAKE_RESPONSE = 0x8100
     /** Query notification capability */
     const val QUERY_BROADCAST_CODES = 0x0200
     /** Notification capability response */
@@ -372,7 +380,8 @@ object GameModeParser {
         val mainEnabled: Boolean?,
         val lowLatencyEnabled: Boolean?,
         val autoPlayPause: Boolean? = null,
-        val dualDevice: Boolean? = null
+        val dualDevice: Boolean? = null,
+        val spatialSound: Boolean? = null
     )
 
     fun parseForFeature(data: ByteArray, featureId: Int): Boolean? {
@@ -404,6 +413,7 @@ object GameModeParser {
         var lowLatencyEnabled: Boolean? = null
         var autoPlayPause: Boolean? = null
         var dualDevice: Boolean? = null
+        var spatialSound: Boolean? = null
         for (i in payloadStart until minOf(payloadStart + payLen - 1, data.size - 1)) {
             val value = data[i + 1].toInt() and 0xFF
             if (value != 0x00 && value != 0x01) continue
@@ -412,10 +422,11 @@ object GameModeParser {
                 GameModeFeature.LOW_LATENCY -> lowLatencyEnabled = value == 0x01
                 BatchParamId.AUTO_PLAY_PAUSE -> autoPlayPause = value == 0x01
                 BatchParamId.DUAL_DEVICE -> dualDevice = value == 0x01
+                BatchParamId.SPATIAL_SOUND -> spatialSound = value == 0x01
             }
         }
-        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null) {
-            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice)
+        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null || spatialSound != null) {
+            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice, spatialSound)
         } else {
             null
         }
@@ -432,6 +443,7 @@ object GameModeParser {
         var lowLatencyEnabled: Boolean? = null
         var autoPlayPause: Boolean? = null
         var dualDevice: Boolean? = null
+        var spatialSound: Boolean? = null
         for (j in 0 until count) {
             val index = payloadStart + 2 + j * 2
             val featureId = data[index].toInt() and 0xFF
@@ -441,10 +453,11 @@ object GameModeParser {
                 GameModeFeature.LOW_LATENCY -> lowLatencyEnabled = enabled
                 BatchParamId.AUTO_PLAY_PAUSE -> autoPlayPause = enabled
                 BatchParamId.DUAL_DEVICE -> dualDevice = enabled
+                BatchParamId.SPATIAL_SOUND -> spatialSound = enabled
             }
         }
-        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null) {
-            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice)
+        return if (mainEnabled != null || lowLatencyEnabled != null || autoPlayPause != null || dualDevice != null || spatialSound != null) {
+            Status(mainEnabled, lowLatencyEnabled, autoPlayPause, dualDevice, spatialSound)
         } else {
             null
         }
