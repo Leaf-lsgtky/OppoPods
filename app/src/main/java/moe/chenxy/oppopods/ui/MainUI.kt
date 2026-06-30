@@ -280,6 +280,7 @@ fun MainUI(
                     }
 
                     OppoPodsAction.ACTION_PODS_CONNECTED_DEVICES_CHANGED -> {
+                        p1.extras?.classLoader = moe.chenxy.oppopods.pods.ConnectedDevice::class.java.classLoader
                         val devices = p1.getParcelableArrayListExtra("devices", moe.chenxy.oppopods.pods.ConnectedDevice::class.java)
                         hookConnectedDevices.value = devices ?: emptyList()
                         hookConnectedDevicesReceived.value = p1.getBooleanExtra("devices_received", true)

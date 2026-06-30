@@ -18,3 +18,6 @@
 
 # Parcelable/data classes are shared through broadcast extras across processes.
 -keep class moe.chenxy.oppopods.utils.miuiStrongToast.data.** { *; }
+
+# ConnectedDevice is sent via putParcelableArrayListExtra in broadcasts.
+-keep class moe.chenxy.oppopods.pods.ConnectedDevice { *; }
