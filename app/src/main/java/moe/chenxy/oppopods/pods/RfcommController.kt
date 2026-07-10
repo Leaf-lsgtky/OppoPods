@@ -31,6 +31,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.putBatteryStatus
 import java.io.IOException
 import android.content.SharedPreferences
 import java.util.concurrent.Executor
@@ -117,15 +118,13 @@ object RfcommController {
 
     private fun changeUIBatteryStatus(status: BatteryParams) {
         Intent(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED).apply {
-            this.putExtra("status", status)
-            putBatteryExtras(status)
+            putBatteryStatus(status)
             this.`package` = BuildConfig.APPLICATION_ID
             this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             mContext!!.sendBroadcast(this)
         }
         sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED) {
-            putExtra("status", status)
-            putBatteryExtras(status)
+            putBatteryStatus(status)
         }
     }
 
@@ -488,7 +487,7 @@ object RfcommController {
         try {
             Intent().apply {
                 setClassName(BuildConfig.APPLICATION_ID, "moe.chenxy.oppopods.ConnectionPopupActivity")
-                putExtra("status", batteryParams)
+                putBatteryStatus(batteryParams)
                 putExtra("device_name", currentDeviceDisplayName())
                 putExtra(
                     OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS,
@@ -629,18 +628,6 @@ object RfcommController {
                 ctx.sendBroadcast(this)
             }
         }
-    }
-
-    private fun Intent.putBatteryExtras(status: BatteryParams) {
-        putExtra("left_battery", status.left?.battery ?: 0)
-        putExtra("left_charging", status.left?.isCharging == true)
-        putExtra("left_connected", status.left?.isConnected == true)
-        putExtra("right_battery", status.right?.battery ?: 0)
-        putExtra("right_charging", status.right?.isCharging == true)
-        putExtra("right_connected", status.right?.isConnected == true)
-        putExtra("case_battery", status.case?.battery ?: 0)
-        putExtra("case_charging", status.case?.isCharging == true)
-        putExtra("case_connected", status.case?.isConnected == true)
     }
 
     private fun refreshRfcommConnectionMethod() {
@@ -917,6 +904,30 @@ object RfcommController {
         currentConnectedDevices = emptyList()
         currentConnectedDevicesReceived = false
         cachedDeviceName = ""
+        mContext = null
+        MediaControl.mContext = null
+    }
+
+    /**
+     * Releases process-owned resources before a LibXposed API 102 hot reload.
+     * The replacement generation reconnects on the next Bluetooth state event.
+     */
+    fun shutdownForHotReload() {
+        batteryPollJob?.cancel()
+        batteryPollJob = null
+        synchronized(rfcommLock) {
+            closeRfcommSocketLocked()
+        }
+        mContext?.let { context ->
+            runCatching { context.unregisterReceiver(broadcastReceiver) }
+        }
+        if (::mediaRouter.isInitialized) {
+            runCatching { stopRoutesScan() }
+        }
+        scanToken = null
+        routes = emptyList()
+        isPodConnected = false
+        isRfcommConnected = false
         mContext = null
         MediaControl.mContext = null
     }

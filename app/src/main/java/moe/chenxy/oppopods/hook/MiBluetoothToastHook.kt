@@ -39,6 +39,8 @@ object MiBluetoothToastHook : HookContext() {
     // ANC 模式本地缓存，用于循环切换和状态同步（1=关 2=降噪 3=通透 4=自适应）
     // 通过接收 ACTION_PODS_ANC_CHANGED 广播与 RfcommController 保持同步
     private var localAncMode = 1
+    private var notificationReceiver: BroadcastReceiver? = null
+    private var notificationReceiverContext: Context? = null
 
     override fun onHook() {
         var notificationSettings = NotificationSettings.fromPrefs(prefs)
@@ -362,6 +364,7 @@ object MiBluetoothToastHook : HookContext() {
 
         hookConstructorAfter(findConstructorByParamCount("com.android.bluetooth.ble.app.MiuiBluetoothNotification", 2)) {
             val context = getObjectField(instance, "mContext") as Context
+            if (notificationReceiver != null) return@hookConstructorAfter
             notificationSettings = loadNotificationSettings(context)
             cacheNotificationSettings(context, notificationSettings)
             if (!notificationSettings.showConnectionNotification) {
@@ -459,6 +462,16 @@ object MiBluetoothToastHook : HookContext() {
                     intentFilter.addAction(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED)
                     context.registerReceiver(broadcastReceiver, intentFilter,
                         Context.RECEIVER_EXPORTED)
+                    notificationReceiver = broadcastReceiver
+                    notificationReceiverContext = context.applicationContext ?: context
         }
+    }
+
+    override fun onHotReloading() {
+        notificationReceiver?.let { receiver ->
+            runCatching { notificationReceiverContext?.unregisterReceiver(receiver) }
+        }
+        notificationReceiver = null
+        notificationReceiverContext = null
     }
 }

@@ -37,6 +37,7 @@ import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -115,7 +116,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                         }
                     }
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
-                        p1.getParcelableExtra("status", BatteryParams::class.java)?.let {
+                        p1.batteryStatusCompat()?.let {
                             batteryParams.value = it
                         }
                     }

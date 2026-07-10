@@ -30,10 +30,6 @@ android {
         debug {
             isDebuggable = true
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
         release {
             isMinifyEnabled = true
@@ -85,7 +81,6 @@ configurations.configureEach {
 dependencies {
     implementation(libs.coreKtx)
     compileOnly(libs.libxposedApi)
-    implementation(libs.libxposedService)
     implementation(libs.kotlinx.serialization.json)
 
     // Compose

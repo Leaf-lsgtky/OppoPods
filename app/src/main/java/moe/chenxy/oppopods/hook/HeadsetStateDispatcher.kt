@@ -17,6 +17,8 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 
 object HeadsetStateDispatcher : HookContext() {
     private var notificationSettingsReceiverRegistered = false
+    private var notificationSettingsContext: Context? = null
+    private var notificationSettingsReceiver: BroadcastReceiver? = null
 
     override fun onHook() {
         hookAfter(findMethodByParamCount("com.android.bluetooth.a2dp.A2dpService", "handleConnectionStateChanged", 3)) {
@@ -45,10 +47,19 @@ object HeadsetStateDispatcher : HookContext() {
         }
     }
 
+    override fun onHotReloading() {
+        notificationSettingsReceiver?.let { receiver ->
+            runCatching { notificationSettingsContext?.unregisterReceiver(receiver) }
+        }
+        notificationSettingsReceiver = null
+        notificationSettingsContext = null
+        notificationSettingsReceiverRegistered = false
+        RfcommController.shutdownForHotReload()
+    }
+
     private fun registerNotificationSettingsReceiver(context: Context) {
         if (notificationSettingsReceiverRegistered) return
-        context.registerReceiver(
-            object : BroadcastReceiver() {
+        val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
                     if (intent?.action != OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED) return
                     RfcommController.syncNotificationSettings(
@@ -57,10 +68,14 @@ object HeadsetStateDispatcher : HookContext() {
                         refreshNotification = false
                     )
                 }
-            },
+        }
+        context.registerReceiver(
+            receiver,
             IntentFilter(OppoPodsAction.ACTION_NOTIFICATION_SETTINGS_CHANGED),
             Context.RECEIVER_EXPORTED
         )
+        notificationSettingsContext = context.applicationContext ?: context
+        notificationSettingsReceiver = receiver
         notificationSettingsReceiverRegistered = true
     }
 

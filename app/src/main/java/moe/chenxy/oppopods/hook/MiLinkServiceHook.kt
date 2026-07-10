@@ -17,9 +17,11 @@ import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.MilinkSpatialAudioOptionSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import java.util.concurrent.CompletableFuture
 
 @SuppressLint("MissingPermission")
@@ -45,6 +47,7 @@ object MiLinkServiceHook : HookContext() {
     private val knownOppoAddresses = linkedSetOf<String>()
     private var context: Context? = null
     private var receiverRegistered = false
+    private var statusReceiver: BroadcastReceiver? = null
     private var currentAddress: String? = null
     private var currentName: String? = null
     private var currentBattery: BatteryParams = BatteryParams()
@@ -71,6 +74,17 @@ object MiLinkServiceHook : HookContext() {
         hookFindRingTitle()
         hookCirculateHeadsetServiceInfo()
         hookHeadSetsDetailDetach()
+    }
+
+    override fun onHotReloading() {
+        statusReceiver?.let { receiver -> runCatching { context?.unregisterReceiver(receiver) } }
+        statusReceiver = null
+        receiverRegistered = false
+        context = null
+        lastHeadsetController = null
+        lastHeadsetDevice = null
+        lastProfileContext = null
+        gameModeIcon = null
     }
 
     // 自定义按钮（被劫持的 MiRing 面板控件）某个功能的行为定义。
@@ -552,7 +566,7 @@ object MiLinkServiceHook : HookContext() {
             addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
             addAction(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED)
         }
-        context?.registerReceiver(object : BroadcastReceiver() {
+        val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
@@ -576,7 +590,7 @@ object MiLinkServiceHook : HookContext() {
                     }
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
-                        currentBattery = intent.parcelableStatus() ?: currentBattery
+                        currentBattery = intent.batteryStatusCompat() ?: currentBattery
                         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
                         saveState(context)
                     }
@@ -611,7 +625,9 @@ object MiLinkServiceHook : HookContext() {
                 }
                 Log.d(TAG, "state action=${intent?.action} address=$currentAddress name=$currentName anc=$currentAnc gameMode=$currentGameMode spatial=$currentSpatialAudioMode spatialSound=$currentSpatialSound miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled rawBattery=${currentBattery.debugString()} miLinkBattery=${miLinkBatteryLevels()}")
             }
-        }, filter, Context.RECEIVER_EXPORTED)
+        }
+        context?.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        statusReceiver = receiver
         receiverRegistered = true
         requestBluetoothStatus("receiver-register")
         Log.d(TAG, "registered status receiver context=$context")
@@ -742,37 +758,13 @@ object MiLinkServiceHook : HookContext() {
     }
 
     private fun refreshMilinkSpatialAudioOption(intent: Intent? = null) {
-        val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val cached = localPrefs
-            ?.takeIf { it.contains(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) }
-            ?.getBoolean(
-                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
-                OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
-            )
-        milinkSpatialAudioOptionEnabled = if (
-            intent?.hasExtra(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED) == true
-        ) {
-            intent.getBooleanExtra(
-                OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
-                cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
-            )
-        } else {
-            reloadRemotePrefs()
-            val remoteValue = runCatching {
-                prefs.getBoolean(
-                    OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED,
-                    cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
-                )
-            }.getOrDefault(cached ?: OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED)
-            if (cached == false && remoteValue == OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED) {
-                false
-            } else {
-                remoteValue
-            }
-        }
-        localPrefs?.edit()
-            ?.putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
-            ?.apply()
+        milinkSpatialAudioOptionEnabled = MilinkSpatialAudioOptionSettings.resolveAndCache(
+            context,
+            PREFS_NAME,
+            prefs,
+            ::reloadRemotePrefs,
+            intent
+        )
     }
 
     // 解析自定义按钮功能：intent extra > 本地缓存 > 远程 prefs（默认 GAME_MODE）
@@ -1099,12 +1091,6 @@ object MiLinkServiceHook : HookContext() {
             callMethod(listener, "invoke", device, updateType)
             Log.d(TAG, "notifyHeadsetPropertyChanged invoked updateType=$updateType address=${device.address}")
         }.onFailure { Log.w(TAG, "notifyHeadsetPropertyChanged failed updateType=$updateType", it) }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun Intent.parcelableStatus(): BatteryParams? {
-        return runCatching { getParcelableExtra("status", BatteryParams::class.java) }.getOrNull()
-            ?: runCatching { getParcelableExtra<BatteryParams>("status") }.getOrNull()
     }
 
     private fun BatteryParams.debugString(): String {

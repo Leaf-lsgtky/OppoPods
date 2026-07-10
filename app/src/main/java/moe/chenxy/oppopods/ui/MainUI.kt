@@ -62,6 +62,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -244,7 +245,7 @@ fun MainUI(
                     }
 
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
-                        p1.getParcelableExtra("status", BatteryParams::class.java)?.let {
+                        p1.batteryStatusCompat()?.let {
                             batteryParams.value = it
                         }
                     }

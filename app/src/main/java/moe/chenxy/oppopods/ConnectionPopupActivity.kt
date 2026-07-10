@@ -69,6 +69,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class ConnectionPopupActivity : ComponentActivity() {
@@ -87,8 +88,7 @@ class ConnectionPopupActivity : ComponentActivity() {
             else -> ColorSchemeMode.System
         }
 
-        val initialBatteryParams = intent.getParcelableExtra("status", BatteryParams::class.java)
-            ?: BatteryParams()
+        val initialBatteryParams = intent.batteryStatusCompat() ?: BatteryParams()
         val initialDeviceName = intent.getStringExtra("device_name").orEmpty()
         val autoDismissSeconds = intent.getIntExtra(
             OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS,
@@ -134,7 +134,7 @@ private fun ConnectionPopupContent(
                         deviceName.value = intent.getStringExtra("device_name") ?: deviceName.value
                     }
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
-                        intent.getParcelableExtra("status", BatteryParams::class.java)?.let {
+                        intent.batteryStatusCompat()?.let {
                             batteryParams.value = it
                         }
                     }
