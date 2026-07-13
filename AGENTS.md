@@ -29,7 +29,7 @@
 
 Miuix 是默认 UI 工具包。Composable 放在 `ui/`，以 `AppTheme`/`MiuixTheme` 包裹；需要弹层时确保处于 Miuix `Scaffold` 环境。协议命令、字节解析和设备能力判断集中在 `pods/`，UI 与 Hook 层不得重复硬编码协议包。跨进程传递电池状态时复用 `utils/miuiStrongToast/data/BatteryStatusIntent.kt` 的兼容读写 helper，避免各进程维护不同的 extra 格式。
 
-LibXposed 入口只保留 `HookEntry` 一个 Java entry，以支持 API 102 热重载。所有 Hook 必须通过 `HookContext` 注册，确保拥有稳定的 hook ID；不要直接调用 `module.hook()`。热重载前必须在 `onHotReloading()` 中停止线程/轮询并注销广播或其他外部回调，避免旧 module classloader 被目标进程保留。`module.prop` 的 `minApiVersion`、`targetApiVersion` 与 `autoHotReload` 必须保持为 `102`、`102`、`true`。
+LibXposed 入口只保留 `HookEntry` 一个 Java entry，以支持 API 102 热重载。所有 Hook 必须通过 `HookContext` 注册，确保拥有稳定的 hook ID；不要直接调用 `module.hook()`。热重载前必须在 `onHotReloading()` 中停止线程/轮询并注销广播或其他外部回调，避免旧 module classloader 被目标进程保留。`module.prop` 的 `minApiVersion`、`targetApiVersion` 与 `autoHotReload` 必须保持为 `101`、`102`、`true`。
 
 ## 测试与设备验证
 
