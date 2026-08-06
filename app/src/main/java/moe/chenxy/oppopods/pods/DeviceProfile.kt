@@ -31,9 +31,22 @@ data class DeviceProfile(
     val connectedDevicesVisible: Boolean = false,
     val spatialAudioVisible: Boolean = false,
     val spatialSoundVisible: Boolean = false,
+    /** 型号白名单中的内置 EQ 预设；耳机端自定义预设由连接状态另行回传。 */
+    val eqPresets: List<EqPreset> = emptyList(),
+    val customEqVisible: Boolean = false,
+    val customEqFrequencies: List<Int> = emptyList(),
+    val customEqMaxPresets: Int = 0,
     val commands: Map<String, PodCommand> = emptyMap(),
     val flags: Map<String, Boolean> = emptyMap(),
-    val assets: Map<String, String> = emptyMap(),
+    /**
+     * ANC 位图位号 → 规范模式名（见 [AncKeys]）。由白名单机型数据生成，
+     * 用于解析耳机回报的位图；为空时回退到 [AncModeParser] 的静态字节表。
+     */
+    val ancIndexToName: Map<Int, String> = emptyMap(),
+    /** 老机型（NC 落在 idx0 且无子模式）：静态表回退时需交换降噪/通透语义。 */
+    val isLegacyAnc: Boolean = false,
+    /** 白名单 productId（6 位大写 hex），自动识别得到；手写配置为空。 */
+    val modelId: String = "",
 ) {
     /** 取某动作的整包；缺键则发空包（不崩），便于未来扩展。 */
     fun packet(key: String): ByteArray {
@@ -94,6 +107,9 @@ data class DeviceProfile(
     fun spatialSoundPacket(enabled: Boolean): ByteArray =
         packet(if (enabled) ProfileKeys.SPATIAL_SOUND_ON else ProfileKeys.SPATIAL_SOUND_OFF)
 
+    /** EQ 预设整包，id 为型号 JSON 或设备端 0x8122 回报的 protocolIndex。 */
+    fun eqPacket(id: Int): ByteArray = OppoPackets.buildSetEqualizer(id)
+
     /** 双设备连接整包。 */
     fun dualDevicePacket(enabled: Boolean): ByteArray =
         packet(if (enabled) ProfileKeys.SET_DUAL_DEVICE_ON else ProfileKeys.SET_DUAL_DEVICE_OFF)
@@ -106,14 +122,6 @@ object NoiseLevel {
     const val MEDIUM = 0x20
     const val DEEP = 0x10
     val ALL = listOf(SMART, LIGHT, MEDIUM, DEEP)
-}
-
-/** assets 映射的标准键名（值为配置资源目录内的文件名；缺省则用内置资源）。 */
-object AssetKeys {
-    const val HOME_IMAGE = "home_image"        // 首页耳机图
-    const val ISLAND_LEFT = "island_left"      // 连接临时超级岛左耳图
-    const val ISLAND_RIGHT = "island_right"    // 连接临时超级岛右耳图
-    const val CONNECT_VIDEO = "connect_video"  // 连接动画视频
 }
 
 /** commands 映射的标准键名。新增功能加键即可，无需改数据结构。 */
@@ -131,6 +139,8 @@ object ProfileKeys {
     const val SPATIAL_SOUND_OFF = "spatial_sound_off"
     const val QUERY_BATTERY = "query_battery"
     const val QUERY_ANC = "query_anc"
+    const val QUERY_EQ = "query_eq"
+    const val QUERY_EQ_ALL = "query_eq_all"
     const val QUERY_STATUS = "query_status"
     const val SET_NOISE_LEVEL_SMART = "set_noise_level_smart"
     const val SET_NOISE_LEVEL_LIGHT = "set_noise_level_light"

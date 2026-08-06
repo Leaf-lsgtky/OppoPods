@@ -37,7 +37,11 @@ class AppRfcommController {
     private var socket: BluetoothSocket? = null
     private var isConnected = false
     private lateinit var profile: DeviceProfile
+    private var currentEqPresetId = -1
+    private val pendingDeletedEqIds = mutableSetOf<Int>()
+    private var pendingSavedEqName: String? = null
     private var lastGameModeStatusUpdateMs = 0L
+    private var firstBatteryReceived = false
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var batteryPollJob: Job? = null
 
@@ -74,14 +78,71 @@ class AppRfcommController {
     private val _spatialSound = MutableStateFlow(false)
     val spatialSound: StateFlow<Boolean> = _spatialSound
 
+    private val _eqPresets = MutableStateFlow<List<EqPreset>>(emptyList())
+    /** 型号内置预设 + 设备端 0x8122 回报的自定义预设。 */
+    val eqPresets: StateFlow<List<EqPreset>> = _eqPresets
+
+    private val _eqDevicePresets = MutableStateFlow<List<EqDevicePreset>>(emptyList())
+    /** 0x0122 的完整设备端条目，供 EQ 二级页面编辑自定义曲线。 */
+    val eqDevicePresets: StateFlow<List<EqDevicePreset>> = _eqDevicePresets
+
+    private val _eqPresetId = MutableStateFlow(-1)
+    val eqPresetId: StateFlow<Int> = _eqPresetId
+
     private val _connectedDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     val connectedDevices: StateFlow<List<ConnectedDevice>> = _connectedDevices
 
     private val _connectedDevicesReceived = MutableStateFlow(false)
     val connectedDevicesReceived: StateFlow<Boolean> = _connectedDevicesReceived
 
+    private val _identifiedModel = MutableStateFlow<String?>(null)
+    /** 自动识别命中的白名单型号名；null 表示尚未识别或未命中。 */
+    val identifiedModel: StateFlow<String?> = _identifiedModel
+
+    /**
+     * 收到 0x8103 后按 productId 解析配置档。由调用方注入（需要 Context 与 prefs），
+     * 返回 null 表示不切换（非自动模式或型号未收录）。
+     */
+    var productIdResolver: ((String) -> DeviceProfile?)? = null
+
     fun setProfile(profile: DeviceProfile) {
         this.profile = profile
+        _eqPresets.value = profile.eqPresets
+        _eqDevicePresets.value = emptyList()
+        pendingDeletedEqIds.clear()
+        pendingSavedEqName = null
+    }
+
+    private fun mergeDeviceEqPresets(entries: List<EqParser.DevicePreset>) {
+        val validEntries = entries.filter { it.id !in pendingDeletedEqIds }
+        _eqDevicePresets.value = validEntries.map {
+            EqDevicePreset(
+                id = it.id,
+                name = it.name,
+                selected = it.selected,
+                minValue = it.minValue,
+                maxValue = it.maxValue,
+                frequencies = it.frequencies,
+                gains = it.gains,
+            )
+        }
+        pendingSavedEqName?.let { name ->
+            _eqDevicePresets.value.firstOrNull { it.name == name }?.id?.let { id ->
+                currentEqPresetId = id
+                _eqPresetId.value = id
+                pendingSavedEqName = null
+            }
+        }
+        val merged = LinkedHashMap<Int, EqPreset>()
+        profile.eqPresets.forEach { merged[it.id] = it }
+        validEntries.forEach { entry ->
+            if (entry.name.isNotBlank()) {
+                merged[entry.id] = EqPreset(entry.id, entry.name)
+            } else if (!merged.containsKey(entry.id)) {
+                merged[entry.id] = EqPreset(entry.id, "M${entry.id}")
+            }
+        }
+        _eqPresets.value = merged.values.sortedBy { it.id }
     }
 
     fun connect(
@@ -92,6 +153,11 @@ class AppRfcommController {
         if (_connectionState.value == ConnectionState.CONNECTING) return
 
         this.profile = profile
+        _eqPresets.value = profile.eqPresets
+        _eqDevicePresets.value = emptyList()
+        currentEqPresetId = -1
+        _eqPresetId.value = -1
+        firstBatteryReceived = false
         _deviceName.value = device.name ?: device.address
         _connectionState.value = ConnectionState.CONNECTING
         batteryPollJob?.cancel()
@@ -108,6 +174,10 @@ class AppRfcommController {
 
                 delay(300)
                 sendPacket(OppoPackets.buildHandshake())
+                delay(200)
+                // 先取 productId，命中白名单后 handlePacket 会重建 profile，
+                // 后续查询与控制即基于该机型的位图索引。
+                sendPacket(OppoPackets.buildQueryProductId())
                 delay(200)
                 sendPacket(OppoPackets.buildQueryBroadcastCodes())
 
@@ -184,6 +254,12 @@ class AppRfcommController {
                 0
             )
             _batteryParams.value = BatteryParams(left, right, case)
+            // 首次收到电量后补查一次自定义 EQ 列表，防止握手期间 0x8122 响应丢失
+            // 导致连接后自定义音效列表为空（参考 OppoPodsManager 的 _wasConnected 补查逻辑）
+            if (!firstBatteryReceived) {
+                firstBatteryReceived = true
+                if (profile.customEqVisible) queryEqDetails()
+            }
             return
         }
 
@@ -201,10 +277,68 @@ class AppRfcommController {
                 PodParams(it.level, it.isCharging, true, current.case?.rawStatus ?: 0)
             } ?: current.case
             _batteryParams.value = BatteryParams(left, right, case)
+            if (!firstBatteryReceived) {
+                firstBatteryReceived = true
+                if (profile.customEqVisible) queryEqDetails()
+            }
             return
         }
 
-        val ancResult = AncModeParser.parse(packet)
+        // Try parse 0x8103 product id -> rebuild profile from the bundled model whitelist
+        val productId = ProductIdParser.parse(packet)
+        if (productId != null) {
+            Log.d(TAG, "Product id received: $productId")
+            val resolved = runCatching { productIdResolver?.invoke(productId) }.getOrNull()
+            if (resolved != null) {
+                profile = resolved
+                _eqPresets.value = resolved.eqPresets
+                _eqDevicePresets.value = emptyList()
+                pendingDeletedEqIds.clear()
+                pendingSavedEqName = null
+                // profile 重建后允许下次电量回调再补查一次 EQ 列表
+                firstBatteryReceived = false
+                _identifiedModel.value = resolved.name
+                Log.d(TAG, "Auto-identified as ${resolved.name} ($productId)")
+                queryStatus()
+            }
+            return
+        }
+
+        val currentEq = EqParser.parseCurrent(packet)
+        if (currentEq != null) {
+            Log.d(TAG, "EQ preset received: $currentEq")
+            currentEqPresetId = currentEq
+            _eqPresetId.value = currentEq
+            return
+        }
+
+        val deviceEqPresets = EqParser.parseAll(packet)
+        if (deviceEqPresets.isNotEmpty() || EqParser.isAllResponse(packet)) {
+            Log.d(TAG, "Device EQ presets received: ${deviceEqPresets.size}")
+            mergeDeviceEqPresets(deviceEqPresets)
+            val selected = deviceEqPresets.firstOrNull { it.selected }?.id
+            if (selected != null) {
+                currentEqPresetId = selected
+                _eqPresetId.value = selected
+            } else if (deviceEqPresets.isEmpty()) {
+                currentEqPresetId = -1
+                _eqPresetId.value = -1
+            }
+            pendingSavedEqName?.let { name ->
+                _eqDevicePresets.value.firstOrNull { it.name == name }?.id?.let { id ->
+                    currentEqPresetId = id
+                    _eqPresetId.value = id
+                    pendingSavedEqName = null
+                }
+            }
+            return
+        }
+
+        val ancResult = AncModeParser.parse(
+            packet,
+            profile.ancIndexToName,
+            profile.isLegacyAnc
+        )
         if (ancResult != null) {
             Log.d(TAG, "ANC mode received: ${ancResult.mode}, noiseLevel=${ancResult.noiseLevel}")
             _ancMode.value = ancResult.mode
@@ -321,6 +455,73 @@ class AppRfcommController {
         scope.launch { sendPacket(profile.spatialSoundPacket(enabled)) }
     }
 
+    fun setEqPreset(id: Int) {
+        if (id < 0) return
+        currentEqPresetId = id
+        _eqPresetId.value = id
+        scope.launch { sendPacket(profile.eqPacket(id)) }
+    }
+
+    private fun customEqFrequencies(): List<Int> =
+        profile.customEqFrequencies.ifEmpty { EqDefaults.FREQUENCIES }
+
+    private fun queryEqDetails() {
+        if (!profile.customEqVisible) return
+        scope.launch {
+            sendPacket(profile.packet(ProfileKeys.QUERY_EQ))
+            delay(80)
+            sendPacket(profile.packet(ProfileKeys.QUERY_EQ_ALL))
+        }
+    }
+
+    fun saveEqPreset(
+        id: Int,
+        name: String,
+        frequencies: List<Int>,
+        gains: List<Int>,
+        minValue: Int = -6,
+        maxValue: Int = 6,
+    ) {
+        if (!profile.customEqVisible || name.isBlank()) return
+        pendingSavedEqName = name
+        scope.launch {
+            sendPacket(
+                OppoPackets.buildSaveEqualizer(
+                    id = id,
+                    name = name,
+                    frequencies = frequencies.ifEmpty { customEqFrequencies() },
+                    gains = gains,
+                    minValue = minValue,
+                    maxValue = maxValue,
+                )
+            )
+            delay(450)
+            queryEqDetails()
+        }
+    }
+
+    fun deleteEqPreset(entry: EqDevicePreset) {
+        if (!profile.customEqVisible || entry.id <= 0) return
+        pendingDeletedEqIds += entry.id
+        if (currentEqPresetId == entry.id) {
+            currentEqPresetId = -1
+            _eqPresetId.value = -1
+        }
+        scope.launch {
+            val packet = if (entry.frequencies.isNotEmpty() && entry.gains.isNotEmpty()) {
+                OppoPackets.buildDeleteEqualizer(entry)
+            } else {
+                OppoPackets.buildDeleteEqualizer(entry.id)
+            }
+            sendPacket(packet)
+            delay(450)
+            queryEqDetails()
+            delay(900)
+            pendingDeletedEqIds.remove(entry.id)
+            queryEqDetails()
+        }
+    }
+
     fun setANCMode(mode: NoiseControlMode) {
         val ancInt = when (mode) {
             NoiseControlMode.OFF -> 1
@@ -342,6 +543,14 @@ class AppRfcommController {
             sendPacket(profile.packet(ProfileKeys.QUERY_BATTERY))
             delay(50)
             sendPacket(profile.packet(ProfileKeys.QUERY_ANC))
+            if (profile.eqPresets.isNotEmpty()) {
+                delay(50)
+                sendPacket(profile.packet(ProfileKeys.QUERY_EQ))
+            }
+            if (profile.customEqVisible) {
+                delay(50)
+                sendPacket(profile.packet(ProfileKeys.QUERY_EQ_ALL))
+            }
         }
     }
 
@@ -376,7 +585,14 @@ class AppRfcommController {
         _autoPlayPause.value = false
         _dualDevice.value = false
         _spatialSound.value = false
+        currentEqPresetId = -1
+        _eqPresetId.value = -1
+        _eqPresets.value = emptyList()
+        _eqDevicePresets.value = emptyList()
+        pendingDeletedEqIds.clear()
+        pendingSavedEqName = null
         _connectedDevices.value = emptyList()
         _connectedDevicesReceived.value = false
+        _identifiedModel.value = null
     }
 }

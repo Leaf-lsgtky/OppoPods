@@ -385,8 +385,7 @@ object MiBluetoothToastHook : HookContext() {
                                 ) ?: return
                                 FocusIslandUtil.showBatteryIsland(
                                     context,
-                                    batteryParams,
-                                    runCatching { DeviceProfileStore.activeProfile(prefs) }.getOrNull()
+                                    batteryParams
                                 )
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)
@@ -434,9 +433,11 @@ object MiBluetoothToastHook : HookContext() {
                                     )
                                 }
                             } else if (p1?.action == OppoPodsAction.ACTION_CYCLE_ANC) {
-                                // 循环切换降噪模式：读取 profile 的 adaptiveVisible，关闭时跳过自适应仅三模式循环
-                                val profile = runCatching { DeviceProfileStore.activeProfile(prefs) }.getOrNull()
-                                val adaptiveEnabled = profile?.adaptiveVisible ?: false
+                                // 循环切换降噪模式：按当前机型的 adaptiveVisible 决定是否经过自适应档。
+                                val profile = runCatching {
+                                    DeviceProfileStore.resolveProfile(context, prefs)
+                                }.getOrNull()
+                                val adaptiveEnabled = profile?.adaptiveVisible == true
                                 localAncMode = when (localAncMode) {
                                     2 -> if (adaptiveEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
                                     4 -> 3  // Adaptive → Transparency

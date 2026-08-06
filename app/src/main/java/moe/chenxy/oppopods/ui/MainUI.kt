@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,10 +51,13 @@ import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.BtLogStore
 import moe.chenxy.oppopods.pods.CustomButtonFunction
-import moe.chenxy.oppopods.pods.AssetKeys
+import moe.chenxy.oppopods.pods.CustomButtonPosition
 import moe.chenxy.oppopods.pods.DeviceProfile
 import moe.chenxy.oppopods.pods.DeviceProfileStore
-import moe.chenxy.oppopods.pods.ProfileAssets
+import moe.chenxy.oppopods.pods.EqDevicePreset
+import moe.chenxy.oppopods.pods.EqPreset
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.pods.SpatialAudioMode
@@ -63,6 +67,8 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.NotificationSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -73,8 +79,10 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
@@ -85,6 +93,7 @@ sealed interface Screen : NavKey {
     data object Profiles : Screen
     data object About : Screen
     data object MoreSettings : Screen
+    data object Equalizer : Screen
     data object Debug : Screen
     data object DebugLog : Screen
 }
@@ -103,6 +112,8 @@ fun MainUI(
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
     val hookConnected = remember { mutableStateOf(false) }
     val gameMode = remember { mutableStateOf(false) }
+    val hookEqPresetId = remember { mutableStateOf(-1) }
+    val hookDeviceEqPresets = remember { mutableStateOf<List<EqDevicePreset>>(emptyList()) }
     val spatialAudioMode = remember { mutableStateOf(SpatialAudioMode.OFF) }
     val spatialSound = remember { mutableStateOf(false) }
     val noiseLevel = remember { mutableStateOf(moe.chenxy.oppopods.pods.NoiseLevel.DEEP) }
@@ -114,7 +125,6 @@ fun MainUI(
 
     val prefs = remember {
         context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
-            .also { DeviceProfileStore.ensureSeeded(it) }
     }
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
     val milinkSpatialAudioOptionEnabled = remember {
@@ -136,6 +146,13 @@ fun MainUI(
         mutableStateOf(
             CustomButtonFunction.fromPreference(
                 prefs.getString(CustomButtonFunction.PREF_KEY, null)
+            )
+        )
+    }
+    val customButtonPosition = remember {
+        mutableStateOf(
+            CustomButtonPosition.fromPreference(
+                prefs.getString(CustomButtonPosition.PREF_KEY, null)
             )
         )
     }
@@ -181,16 +198,30 @@ fun MainUI(
         )
     }
 
-    val activeProfile = remember { mutableStateOf(DeviceProfileStore.activeProfile(prefs)) }
+    // Hook 连接路径不会经过 onDeviceSelected；先按当前配置模式解析一次，连接广播
+    // 到达后再按实际蓝牙名称刷新，避免旧的持久化种子配置残留可见性开关。
+    val activeProfile = remember {
+        mutableStateOf(DeviceProfileStore.resolveProfile(context, prefs))
+    }
     val debugMode = remember { mutableStateOf(prefs.getBoolean("debug_mode", false)) }
     val loggingEnabled = remember { mutableStateOf(prefs.getBoolean("bt_logging_enabled", false)) }
     BtLogStore.isEnabled = loggingEnabled.value
     val appController = remember { AppRfcommController() }
+    // 收到 0x8103 后按 productId 在内嵌白名单里精确命中并重建配置（仅自动模式生效）。
+    remember(appController) {
+        appController.productIdResolver = { productId ->
+            DeviceProfileStore.profileForProductId(context, prefs, productId)
+                ?.also { activeProfile.value = it }
+        }
+    }
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
     val appAnc by appController.ancMode.collectAsState()
     val appDeviceName by appController.deviceName.collectAsState()
     val appGameMode by appController.gameMode.collectAsState()
+    val appEqPresets by appController.eqPresets.collectAsState()
+    val appEqDevicePresets by appController.eqDevicePresets.collectAsState()
+    val appEqPresetId by appController.eqPresetId.collectAsState()
     val appSpatialAudioMode by appController.spatialAudioMode.collectAsState()
     val appSpatialSound by appController.spatialSound.collectAsState()
     val appNoiseLevel by appController.noiseLevel.collectAsState()
@@ -208,6 +239,25 @@ fun MainUI(
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
+    val displayEqPresets = if (isStandaloneConnected) {
+        appEqPresets
+    } else {
+        buildList {
+            val byId = LinkedHashMap<Int, EqPreset>()
+            activeProfile.value.eqPresets.forEach { byId[it.id] = it }
+            hookDeviceEqPresets.value.forEach { entry ->
+                if (entry.name.isNotBlank()) byId[entry.id] = EqPreset(entry.id, entry.name)
+            }
+            addAll(byId.values.sortedBy { it.id })
+        }
+    }
+    val displayEqDevicePresets = if (isStandaloneConnected) {
+        appEqDevicePresets
+    } else {
+        hookDeviceEqPresets.value
+    }
+    val displayEqPresetId = if (isStandaloneConnected) appEqPresetId else hookEqPresetId.value
+    val displayEqCurrentName = displayEqPresets.firstOrNull { it.id == displayEqPresetId }?.name.orEmpty()
     val displaySpatialAudioMode = if (isStandaloneConnected) appSpatialAudioMode else spatialAudioMode.value
     val displaySpatialSound = if (isStandaloneConnected) appSpatialSound else spatialSound.value
     val displayNoiseLevel = if (isStandaloneConnected) appNoiseLevel else noiseLevel.value
@@ -254,6 +304,29 @@ fun MainUI(
                         gameMode.value = p1.getBooleanExtra("enabled", false)
                     }
 
+                    OppoPodsAction.ACTION_PODS_EQ_PRESET_CHANGED -> {
+                        hookEqPresetId.value = p1.getIntExtra("id", -1)
+                        val entriesJson = p1.getStringExtra(OppoPodsAction.EXTRA_EQ_ENTRIES_JSON)
+                        hookDeviceEqPresets.value = if (entriesJson != null) {
+                            DeviceProfileStore.parseEqEntries(entriesJson)
+                        } else {
+                            val ids = p1.getIntegerArrayListExtra("preset_ids") ?: arrayListOf()
+                            val names = p1.getStringArrayListExtra("preset_names") ?: arrayListOf()
+                            ids.mapIndexedNotNull { index, id ->
+                                names.getOrNull(index)?.takeIf { it.isNotBlank() }?.let {
+                                    EqDevicePreset(id = id, name = it)
+                                }
+                            }
+                        }
+                    }
+
+                    OppoPodsAction.ACTION_PODS_PROFILE_CHANGED -> {
+                        p1.getStringExtra(OppoPodsAction.EXTRA_PROFILE_JSON)?.let { json ->
+                            runCatching { DeviceProfileStore.parse(json) }
+                                .onSuccess { activeProfile.value = it }
+                        }
+                    }
+
                     OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED -> {
                         spatialAudioMode.value = p1.getIntExtra("mode", SpatialAudioMode.OFF)
                             .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
@@ -290,6 +363,13 @@ fun MainUI(
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
                         mainTitle.value = deviceName ?: ""
+                        hookEqPresetId.value = -1
+                        hookDeviceEqPresets.value = emptyList()
+                        if (!deviceName.isNullOrBlank()) {
+                            runCatching {
+                                DeviceProfileStore.resolveProfile(context, prefs, deviceName)
+                            }.onSuccess { activeProfile.value = it }
+                        }
                         hookConnected.value = true
                         Log.i("OppoPods", "pod connected via hook: $deviceName")
                     }
@@ -297,6 +377,8 @@ fun MainUI(
                     OppoPodsAction.ACTION_PODS_DISCONNECTED -> {
                         mainTitle.value = ""
                         hookConnected.value = false
+                        hookEqPresetId.value = -1
+                        hookDeviceEqPresets.value = emptyList()
                         if (p0 is MainActivity) {
                             p0.finish()
                         }
@@ -318,6 +400,8 @@ fun MainUI(
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_EQ_PRESET_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_PROFILE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_AUDIO_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_NOISE_LEVEL_CHANGED)
@@ -376,6 +460,59 @@ fun MainUI(
             setPackage("com.android.bluetooth")
             context.sendBroadcast(this)
         }
+    }
+
+    fun setEqPreset(id: Int) {
+        if (id < 0) return
+        if (isStandaloneConnected) {
+            appController.setEqPreset(id)
+            return
+        }
+        hookEqPresetId.value = id
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_EQ_PRESET_SET).apply {
+            putExtra("id", id)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
+    }
+
+    fun saveEqPreset(
+        id: Int,
+        name: String,
+        frequencies: List<Int>,
+        gains: List<Int>,
+        minValue: Int,
+        maxValue: Int,
+    ) {
+        if (isStandaloneConnected) {
+            appController.saveEqPreset(id, name, frequencies, gains, minValue, maxValue)
+            return
+        }
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_EQ_PRESET_SAVE).apply {
+            putExtra("id", id)
+            putExtra("name", name)
+            putIntegerArrayListExtra("frequencies", ArrayList(frequencies))
+            putIntegerArrayListExtra("gains", ArrayList(gains))
+            putExtra("min_value", minValue)
+            putExtra("max_value", maxValue)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
+    }
+
+    fun deleteEqPreset(entry: EqDevicePreset) {
+        if (isStandaloneConnected) {
+            appController.deleteEqPreset(entry)
+            return
+        }
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_EQ_PRESET_DELETE).apply {
+            putExtra(
+                OppoPodsAction.EXTRA_EQ_ENTRIES_JSON,
+                DeviceProfileStore.exportEqEntries(listOf(entry)),
+            )
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
     }
 
     fun setSpatialAudioMode(mode: Int) {
@@ -454,10 +591,15 @@ fun MainUI(
     }
 
     fun onDeviceSelected(device: BluetoothDevice) {
+        // 按当前模式预解析（自动模式先用蓝牙名预判），连上后 0x8103 再精确校正。
+        val resolved = runCatching {
+            DeviceProfileStore.resolveProfile(context, prefs, device.name)
+        }.getOrElse { activeProfile.value }
+        activeProfile.value = resolved
         appController.connect(
             device = device,
             connectionMethod = rfcommConnectionMethod.value,
-            profile = activeProfile.value
+            profile = resolved
         )
     }
 
@@ -544,6 +686,15 @@ fun MainUI(
         }
     }
 
+    fun broadcastCustomButtonPosition(value: String) {
+        Intent(OppoPodsAction.ACTION_CUSTOM_BUTTON_POSITION_CHANGED).apply {
+            setPackage("com.milink.service")
+            putExtra(CustomButtonPosition.PREF_KEY, value)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            context.sendBroadcast(this)
+        }
+    }
+
     // Each entry has its own Scaffold+TopAppBar so the full page transitions together
     val entryProvider = entryProvider<Screen> {
         entry<Screen.Home> {
@@ -607,6 +758,10 @@ fun MainUI(
                             onAncModeChange = { setAncMode(it) },
                             gameMode = displayGameMode,
                             onGameModeChange = { setGameMode(it) },
+                            eqVisible = activeProfile.value.eqPresets.isNotEmpty() ||
+                                    activeProfile.value.customEqVisible,
+                            eqCurrentName = displayEqCurrentName,
+                            onOpenEqualizer = { backStack.add(Screen.Equalizer) },
                             spatialAudioMode = displaySpatialAudioMode,
                             onSpatialAudioModeChange = { setSpatialAudioMode(it) },
                             spatialAudioVisible = activeProfile.value.spatialAudioVisible,
@@ -619,7 +774,7 @@ fun MainUI(
                             noiseLevel = displayNoiseLevel,
                             smartAncLevel = displaySmartAncLevel,
                             onNoiseLevelChange = { setNoiseLevel(it) },
-                            homeImageFile = ProfileAssets.file(context, activeProfile.value, AssetKeys.HOME_IMAGE),
+                            homeImageFile = PodImageStore.customFile(context, PodImageSlot.HOME_IMAGE),
                             onOpenMoreSettings = { backStack.add(Screen.MoreSettings) }
                         )
                         "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
@@ -627,6 +782,78 @@ fun MainUI(
                         else -> Box(Modifier.padding(padding).fillMaxSize()) { DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) }) }
                     }
                 }
+            }
+        }
+        entry<Screen.Equalizer> {
+            val equalizerScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+            var isEqEditing by remember { mutableStateOf(false) }
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.sound_effects),
+                        largeTitle = stringResource(R.string.sound_effects),
+                        scrollBehavior = equalizerScrollBehavior,
+                        navigationIcon = {
+                            IconButton(
+                                onClick = {
+                                    if (isEqEditing) isEqEditing = false
+                                    else backStack.removeLast()
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        },
+                        actions = {
+                            if (activeProfile.value.customEqVisible) {
+                                if (isEqEditing) {
+                                    TextButton(
+                                        text = stringResource(R.string.done),
+                                        onClick = { isEqEditing = false },
+                                    )
+                                } else {
+                                    val editEntry = DropdownEntry(
+                                        items = listOf(
+                                            DropdownItem(
+                                                text = stringResource(R.string.eq_edit),
+                                                onClick = { isEqEditing = true },
+                                            )
+                                        )
+                                    )
+                                    OverlayIconDropdownMenu(entry = editEntry) {
+                                        Icon(
+                                            imageVector = MiuixIcons.More,
+                                            contentDescription = stringResource(R.string.eq_edit)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                EqualizerPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(equalizerScrollBehavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    builtInPresets = activeProfile.value.eqPresets,
+                    devicePresets = displayEqDevicePresets,
+                    selectedId = displayEqPresetId,
+                    customEqVisible = activeProfile.value.customEqVisible,
+                    customEqFrequencies = activeProfile.value.customEqFrequencies,
+                    customEqMaxPresets = activeProfile.value.customEqMaxPresets,
+                    isEditing = isEqEditing,
+                    onSelectPreset = { setEqPreset(it) },
+                    onOpenCustomEq = { preset -> setEqPreset(preset.id) },
+                    onSavePreset = { id, name, frequencies, gains, minValue, maxValue ->
+                        saveEqPreset(id, name, frequencies, gains, minValue, maxValue)
+                    },
+                    onDeletePreset = { deleteEqPreset(it) },
+                )
             }
         }
         entry<Screen.Settings> {
@@ -736,6 +963,7 @@ fun MainUI(
                         .nestedScroll(profilesScrollBehavior.nestedScrollConnection),
                     contentPadding = padding,
                     prefs = prefs,
+                    activeProfile = activeProfile.value,
                     onActiveProfileChanged = { p ->
                         activeProfile.value = p
                         appController.setProfile(p)
@@ -829,6 +1057,14 @@ fun MainUI(
                             .putString(CustomButtonFunction.PREF_KEY, it.preferenceValue)
                             .commit()
                         broadcastCustomButtonFunction(it.preferenceValue)
+                    },
+                    customButtonPosition = customButtonPosition,
+                    onCustomButtonPositionChange = {
+                        customButtonPosition.value = it
+                        prefs.edit()
+                            .putString(CustomButtonPosition.PREF_KEY, it.preferenceValue)
+                            .commit()
+                        broadcastCustomButtonPosition(it.preferenceValue)
                     }
                 )
             }

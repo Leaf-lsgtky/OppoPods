@@ -12,6 +12,10 @@ object OppoPodsAction {
     const val ACTION_REFRESH_STATUS = "chen.action.oppopods.refresh_status"
     const val ACTION_GAME_MODE_SET = "chen.action.oppopods.game_mode_set"
     const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
+    const val ACTION_EQ_PRESET_SET = "chen.action.oppopods.eq_preset_set"
+    const val ACTION_PODS_EQ_PRESET_CHANGED = "chen.action.oppopods.pods_eq_preset_changed"
+    const val ACTION_EQ_PRESET_SAVE = "chen.action.oppopods.eq_preset_save"
+    const val ACTION_EQ_PRESET_DELETE = "chen.action.oppopods.eq_preset_delete"
     const val ACTION_SPATIAL_AUDIO_SET = "chen.action.oppopods.spatial_audio_set"
     const val ACTION_PODS_SPATIAL_AUDIO_CHANGED = "chen.action.oppopods.pods_spatial_audio_changed"
     const val ACTION_SPATIAL_SOUND_SET = "chen.action.oppopods.spatial_sound_set"
@@ -29,10 +33,15 @@ object OppoPodsAction {
     const val ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED = "chen.action.oppopods.milink_spatial_audio_option_changed"
     // 自定义按钮（MiLink 面板劫持控件）功能变更广播（App → com.milink.service）
     const val ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED = "chen.action.oppopods.custom_button_function_changed"
+    // 自定义按钮位置变更广播（App → com.milink.service）
+    const val ACTION_CUSTOM_BUTTON_POSITION_CHANGED = "chen.action.oppopods.custom_button_position_changed"
     // 当前设备配置档变更广播（App → com.android.bluetooth），携带 EXTRA_PROFILE_JSON
     const val ACTION_ACTIVE_PROFILE_CHANGED = "chen.action.oppopods.active_profile_changed"
+    // RFCOMM 按 productId 精确识别后的配置档（com.android.bluetooth → App）
+    const val ACTION_PODS_PROFILE_CHANGED = "chen.action.oppopods.pods_profile_changed"
 
     const val EXTRA_PROFILE_JSON = "profile_json"
+    const val EXTRA_EQ_ENTRIES_JSON = "eq_entries_json"
     const val EXTRA_ALLOW_RFCOMM_RECONNECT = "allow_rfcomm_reconnect"
     const val EXTRA_RFCOMM_CONNECTED = "rfcomm_connected"
 

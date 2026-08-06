@@ -24,9 +24,11 @@ import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun PodDetailPage(
@@ -37,6 +39,9 @@ fun PodDetailPage(
     onAncModeChange: (NoiseControlMode) -> Unit,
     gameMode: Boolean = false,
     onGameModeChange: (Boolean) -> Unit = {},
+    eqVisible: Boolean = false,
+    eqCurrentName: String = "",
+    onOpenEqualizer: () -> Unit = {},
     spatialAudioMode: Int = SpatialAudioMode.OFF,
     onSpatialAudioModeChange: (Int) -> Unit = {},
     spatialAudioVisible: Boolean = false,
@@ -86,7 +91,6 @@ fun PodDetailPage(
         .indexOf(spatialAudioMode.coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING))
         .takeIf { it >= 0 }
         ?: 0
-
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = contentPadding,
@@ -159,6 +163,21 @@ fun PodDetailPage(
                         summary = stringResource(R.string.game_mode_summary),
                         checked = gameMode,
                         onCheckedChange = onGameModeChange
+                    )
+                }
+                if (eqVisible) {
+                    ArrowPreference(
+                        title = stringResource(R.string.sound_effects),
+                        endActions = {
+                            if (eqCurrentName.isNotBlank()) {
+                                Text(
+                                    text = eqCurrentName,
+                                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                )
+                            }
+                        },
+                        onClick = onOpenEqualizer,
                     )
                 }
                 if (spatialAudioVisible) {

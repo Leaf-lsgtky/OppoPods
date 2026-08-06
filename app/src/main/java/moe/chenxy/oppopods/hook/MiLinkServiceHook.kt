@@ -10,11 +10,13 @@ import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.graphics.drawable.Drawable
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.pods.CustomButtonFunction
+import moe.chenxy.oppopods.pods.CustomButtonPosition
 import moe.chenxy.oppopods.pods.SpatialAudioMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.MilinkSpatialAudioOptionSettings
@@ -22,6 +24,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
+import java.lang.ref.WeakReference
 import java.util.concurrent.CompletableFuture
 
 @SuppressLint("MissingPermission")
@@ -43,6 +46,12 @@ object MiLinkServiceHook : HookContext() {
     private const val SPATIAL_SOUND_SUBTITLE_OFF = "已关闭"
     private const val ANC_ADAPTIVE = 4
     private const val FIND_RING_HIDDEN = -1
+    private const val MIRING_COMPAT_DEVICE_TYPE = 1
+    private const val MIRING_VIEW_ID = "mi_audio_ringing_view"
+    private const val MIRING_CARD_VIEW_ID = "mi_audio_ring_card"
+    private const val AUDIO_EFFECT_VIEW_ID = "audio_effect_view"
+    private const val AUDIO_EFFECT_CARD_VIEW_ID = "audio_effect_card"
+    private const val CUSTOM_BUTTON_CLICK_THROTTLE_MS = 300L
     private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
     private val knownOppoAddresses = linkedSetOf<String>()
     private var context: Context? = null
@@ -57,6 +66,7 @@ object MiLinkServiceHook : HookContext() {
     private var currentSpatialSound = false
     private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
     private var customButtonFunction = CustomButtonFunction.GAME_MODE
+    private var customButtonPosition = CustomButtonPosition.UPPER
     @Volatile
     private var panelDetaching = false
     private var gameModeIcon: Drawable? = null
@@ -64,14 +74,25 @@ object MiLinkServiceHook : HookContext() {
     private var lastHeadsetController: Any? = null
     private var lastHeadsetDevice: BluetoothDevice? = null
     private var lastProfileContext: Any? = null
+    private var customButtonDetail: WeakReference<View>? = null
+    private val lowerCustomButtonViews = mutableListOf<WeakReference<View>>()
+    private var lastCustomButtonClickMs = 0L
+    // 捕获已 attach 的 CirculateServiceInfo，用于在空间音频开关变化时即时更新
+    // serviceProperties.headset_switch_state 并重新触发 setHeadsetId 让面板重读 Bundle
+    private var lastCirculateServiceInfo: WeakReference<Any>? = null
+    private var lastCirculateHeadsetId: String? = null
+    private var lastCirculateHeadsetType: Int = 0
 
     override fun onHook() {
+        Log.d(TAG, "MiLink hook initialized; custom placement resolver=runtime-suffix")
         hookContextEntry()
         hookMxBluetoothRuntime()
         hookHeadsetRuntimeDisplay()
         hookFindRingControllerCommand()
+        hookCustomButtonAudioEffectCommand()
         hookFindRingCommand()
         hookFindRingTitle()
+        hookCustomButtonPlacementForTypeOne()
         hookCirculateHeadsetServiceInfo()
         hookHeadSetsDetailDetach()
     }
@@ -84,7 +105,16 @@ object MiLinkServiceHook : HookContext() {
         lastHeadsetController = null
         lastHeadsetDevice = null
         lastProfileContext = null
+        customButtonDetail = null
+        lowerCustomButtonViews.forEach { reference ->
+            runCatching { reference.get()?.setOnClickListener(null) }
+        }
+        lowerCustomButtonViews.clear()
+        lastCustomButtonClickMs = 0L
         gameModeIcon = null
+        lastCirculateServiceInfo = null
+        lastCirculateHeadsetId = null
+        lastCirculateHeadsetType = 0
     }
 
     // 自定义按钮（被劫持的 MiRing 面板控件）某个功能的行为定义。
@@ -426,6 +456,7 @@ object MiLinkServiceHook : HookContext() {
                 val device = args[0] as? BluetoothDevice ?: return@hookBefore
                 if (!isOppoPod(device)) return@hookBefore
                 val handler = activeHandler() ?: return@hookBefore
+                if (customButtonPosition != CustomButtonPosition.UPPER) return@hookBefore
                 val state = args[1] as? Int ?: return@hookBefore
                 val instanceContext = runCatching { getObjectField(instance, "context") as? Context }.getOrNull()
                 if (instanceContext != null) {
@@ -471,6 +502,7 @@ object MiLinkServiceHook : HookContext() {
 
             methods.forEach { method ->
                 hookBefore(method) {
+                    if (customButtonPosition != CustomButtonPosition.UPPER) return@hookBefore
                     val state = args[1] as? Int ?: return@hookBefore
                     if (state == FIND_RING_IDLE && activeHandler() != null && panelDetaching) {
                         this.result = CompletableFuture.completedFuture(FIND_RING_RESULT_SUCCESS)
@@ -480,6 +512,63 @@ object MiLinkServiceHook : HookContext() {
                 Log.d(TAG, "hooked headset controller command ${controllerClass.name}.${method.name}")
             }
         }.onFailure { Log.w(TAG, "hook headset controller command skipped", it) }
+    }
+
+    /**
+     * The lower placement reuses the Apple-only single-switch audio-effect card. Its native
+     * click path calls HeadsetServiceController.setAudioEffect(CirculateServiceInfo, 0/1).
+     * Keep this as a command-level fallback in addition to the View click listener below.
+     */
+    private fun hookCustomButtonAudioEffectCommand() {
+        runCatching {
+            val headsetInfoClass = findClass("com.miui.circulate.api.service.CirculateServiceInfo")
+            val detailClass = findHeadSetsDetailClass()
+            val controllerClass = detailClass
+                ?.let { findHeadsetControllerClass(it, headsetInfoClass) }
+                ?: findClass("com.miui.circulate.api.protocol.headset.C4652c0")
+            val methods = controllerCommandMethods(controllerClass, headsetInfoClass)
+                .filter { method ->
+                    method.name.equals("setAudioEffect", ignoreCase = true) ||
+                        // MiLink 18 exports the Kotlin source method c0() as m19898c0().
+                        matchesMiLinkMethodName(method.name, "c0")
+                }
+            if (methods.isEmpty()) {
+                Log.w(TAG, "hook headset controller setAudioEffect skipped: named command not found in ${controllerClass.name}")
+                return
+            }
+
+            methods.forEach { method ->
+                hookBefore(method) {
+                    if (customButtonPosition != CustomButtonPosition.LOWER) return@hookBefore
+                    val serviceInfo = args[0] ?: return@hookBefore
+                    if (!isTargetCirculateServiceInfo(serviceInfo)) return@hookBefore
+                    val handler = activeHandler() ?: return@hookBefore
+                    val state = (args[1] as? Number)?.toInt() ?: return@hookBefore
+                    captureRuntimeContext(instance)
+
+                    if (state == FIND_RING_IDLE && panelDetaching) {
+                        this.result = CompletableFuture.completedFuture(FIND_RING_RESULT_SUCCESS)
+                        Log.d(TAG, "HeadsetServiceController.setAudioEffect detach stop ignored")
+                        return@hookBefore
+                    }
+
+                    val enabled = state != FIND_RING_IDLE
+                    if (enabled == handler.isActive()) {
+                        refreshCustomButtonPlacement()
+                        this.result = CompletableFuture.completedFuture(FIND_RING_RESULT_SUCCESS)
+                        Log.d(TAG, "HeadsetServiceController.setAudioEffect duplicate ignored state=$state active=$enabled")
+                        return@hookBefore
+                    }
+
+                    handler.onToggle(enabled, context)
+                    saveState(context)
+                    refreshCustomButtonPlacement()
+                    this.result = CompletableFuture.completedFuture(FIND_RING_RESULT_SUCCESS)
+                    Log.d(TAG, "HeadsetServiceController.setAudioEffect handled state=$state active=$enabled")
+                }
+                Log.d(TAG, "hooked headset controller audio effect command ${controllerClass.name}.${method.name}")
+            }
+        }.onFailure { Log.w(TAG, "hook headset controller setAudioEffect skipped", it) }
     }
 
     private fun hookFindRingTitle() {
@@ -498,20 +587,508 @@ object MiLinkServiceHook : HookContext() {
                 val view = instance as? View ?: return@hookBefore
                 val resId = args[0] as? Int ?: return@hookBefore
                 val handler = activeHandler() ?: return@hookBefore
-                // 仅作用于 MiRing（mi_audio_ringing_view，自定义按钮真正挂载处）
-                if (resourceEntryName(view, view.id) != "mi_audio_ringing_view") return@hookBefore
-                val active = when (resourceEntryName(view, resId)) {
-                    "circulate_headset_control_audio_find_earphone" -> false
-                    "circulate_headset_control_audio_stop_find_earphone" -> true
-                    else -> return@hookBefore
-                }
+                val active = customButtonTitleState(view, resId) ?: return@hookBefore
                 if (!setSynergyTitle(view, handler.title())) return@hookBefore
                 applySubtitle(view, resId, handler.subtitle(active))
                 applyIcon(view, resId, handler.icon(view))
                 this.result = null
-                Log.d(TAG, "SynergyView.setTitle replaced res=${resourceEntryName(view, resId)} title=${handler.title()} active=$active")
+                Log.d(TAG, "SynergyView.setTitle replaced view=${resourceEntryName(view, view.id)} res=${resourceEntryName(view, resId)} title=${handler.title()} active=$active")
             }
         }.onFailure { Log.w(TAG, "hook SynergyView.setTitle skipped", it) }
+    }
+
+    /**
+     * Keep the OPPO device type intact and alter only the already-created type-1 detail view.
+     * The lower card is normally reserved for Apple devices, but its view is always inflated on
+     * the current MiLink panel and can be driven without changing the device classification.
+     */
+    private fun hookCustomButtonPlacementForTypeOne() {
+        val detailClass = findHeadSetsDetailClass() ?: run {
+            Log.w(TAG, "hook custom button placement skipped: HeadSetsDetail not found")
+            return
+        }
+        val headsetDeviceInfoClass = runCatching {
+            findClass("com.miui.circulate.api.protocol.headset.HeadsetDeviceInfo")
+        }.getOrElse {
+            Log.w(TAG, "hook custom button placement skipped: HeadsetDeviceInfo not found", it)
+            return
+        }
+
+        // The setup method creates the sections after receiving HeadsetDeviceInfo.
+        detailClass.declaredMethods
+            .firstOrNull { method ->
+                method.returnType == Void.TYPE &&
+                    method.parameterTypes.size == 4 &&
+                    method.parameterTypes[2] == headsetDeviceInfoClass
+            }
+            ?.apply { isAccessible = true }
+            ?.let { setupMethod ->
+                runCatching {
+                    hookAfter(setupMethod) {
+                        val detail = instance as? View ?: return@hookAfter
+                        val headsetInfo = args.getOrNull(2)
+                        val miRingSection = findDetailSection(detail, MIRING_VIEW_ID)
+                        val audioEffectSection = findDetailSection(detail, AUDIO_EFFECT_VIEW_ID)
+                        val audioEffectStateMethod = audioEffectSection?.let {
+                            findSectionMethod(it, listOf("o"), Int::class.javaPrimitiveType!!)?.name
+                        }
+                        Log.d(
+                            TAG,
+                            "HeadSetsDetail setup class=${detail.javaClass.name} type=${headsetDeviceType(headsetInfo)} " +
+                                "isOppoTypeOne=${isTypeOneOppoHeadset(headsetInfo)} " +
+                                "miRing=${miRingSection?.javaClass?.name} " +
+                                "audioEffect=${audioEffectSection?.javaClass?.name} audioEffectState=$audioEffectStateMethod"
+                        )
+                        applyCustomButtonPlacement(detail, headsetInfo)
+                    }
+                    Log.d(TAG, "hooked ${detailClass.name}.${setupMethod.name} for custom button placement")
+                }.onFailure { Log.w(TAG, "hook custom button placement setup skipped", it) }
+            }
+            ?: Log.w(TAG, "hook custom button placement setup skipped: setup method not found")
+
+        // Reapply after attachment so a later layout pass cannot restore the native visibility.
+        runCatching {
+            val attachedMethod = detailClass.getDeclaredMethod("onAttachedToWindow").apply { isAccessible = true }
+            hookAfter(attachedMethod) {
+                val detail = instance as? View ?: return@hookAfter
+                applyCustomButtonPlacement(detail)
+            }
+            Log.d(TAG, "hooked ${detailClass.name}.onAttachedToWindow for custom button placement")
+        }.onFailure { Log.w(TAG, "hook custom button placement attach skipped", it) }
+
+        // The service observer refreshes all section states through HeadSetsDetail.E() after the
+        // initial setup. Reapply at the end of that pass so it cannot restore MiRing after the
+        // lower Apple-style card was selected.
+        detailClass.declaredMethods
+            .firstOrNull { method ->
+                method.returnType == Void.TYPE &&
+                    method.parameterTypes.isEmpty() &&
+                    matchesMiLinkMethodName(method.name, "E")
+            }
+            ?.apply { isAccessible = true }
+            ?.let { refreshMethod ->
+                runCatching {
+                    hookAfter(refreshMethod) {
+                        val detail = instance as? View ?: return@hookAfter
+                        detail.post { applyCustomButtonPlacement(detail) }
+                    }
+                    Log.d(TAG, "hooked ${detailClass.name}.${refreshMethod.name} state refresh for custom button placement")
+                }.onFailure { Log.w(TAG, "hook custom button placement state refresh skipped", it) }
+            }
+            ?: Log.w(TAG, "hook custom button placement state refresh skipped: method not found")
+    }
+
+    private fun applyCustomButtonPlacement(detail: View, deviceInfo: Any? = findHeadsetDetailDeviceInfo(detail)) {
+        if (!isTypeOneOppoHeadset(deviceInfo)) return
+
+        customButtonDetail = WeakReference(detail)
+        val handler = activeHandler()
+        val miRingSection = findDetailSection(detail, MIRING_VIEW_ID)
+        val miRingCard = findViewByEntryName(detail, MIRING_CARD_VIEW_ID)
+        val miRingView = findViewByEntryName(detail, MIRING_VIEW_ID)
+        val audioEffectSection = findDetailSection(detail, AUDIO_EFFECT_VIEW_ID)
+        val audioEffectCard = findViewByEntryName(detail, AUDIO_EFFECT_CARD_VIEW_ID)
+        val audioEffectView = findViewByEntryName(detail, AUDIO_EFFECT_VIEW_ID)
+
+        val showUpper = handler != null && customButtonPosition == CustomButtonPosition.UPPER
+        val showLower = handler != null && customButtonPosition == CustomButtonPosition.LOWER
+        val upperVisibilityApplied = applySectionVisibility(
+            miRingSection,
+            miRingCard,
+            miRingView,
+            showUpper,
+            listOf("h")
+        )
+        // C6444d1.h() only changes the child views. HeadSetsDetail uses this flag independently
+        // while calculating its height, so leaving it true lets the native "Find earbuds" card
+        // reappear on a later layout pass.
+        val miRingFlagApplied = setDetailVisibilityFlag(
+            detail,
+            setterName = "setMiRingVisible",
+            fieldName = "miRingVisible",
+            visible = showUpper
+        )
+        val lowerVisibilityApplied = applySectionVisibility(
+            audioEffectSection,
+            audioEffectCard,
+            audioEffectView,
+            showLower,
+            listOf("m")
+        )
+        // C6486x.o() is the native state path: in addition to showing the card, it sets
+        // HeadSetsDetail.audioEffectVisible and posts a height update. Use -1 to remove the
+        // lower slot completely rather than merely hiding its child view.
+        val lowerState = when {
+            !showLower -> FIND_RING_HIDDEN
+            handler.isActive() -> 1
+            else -> 0
+        }
+        val lowerStateApplied = applySectionStateValue(
+            audioEffectSection,
+            audioEffectView,
+            lowerState,
+            listOf("o")
+        )
+        val audioEffectFlagApplied = setDetailVisibilityFlag(
+            detail,
+            setterName = "setAudioEffectVisible",
+            fieldName = "audioEffectVisible",
+            visible = showLower
+        )
+
+        if (showUpper) {
+            applySectionState(miRingSection, miRingView, handler.isActive(), listOf("j"))
+            applyCustomButtonAppearance(miRingView, handler)
+        }
+        if (showLower) {
+            applyCustomButtonAppearance(audioEffectView, handler)
+            installLowerButtonClick(detail, audioEffectView, audioEffectCard)
+        }
+        requestDetailHeightRefresh(detail)
+        Log.d(
+            TAG,
+            "custom button placement applied position=$customButtonPosition active=${handler?.isActive()} " +
+                "upper=$showUpper lower=$showLower upperSection=$upperVisibilityApplied " +
+                "lowerSection=$lowerVisibilityApplied lowerState=$lowerStateApplied " +
+                "miRingFlag=$miRingFlagApplied audioEffectFlag=$audioEffectFlagApplied"
+        )
+    }
+
+    private fun refreshCustomButtonPlacement() {
+        val detail = customButtonDetail?.get() ?: return
+        detail.post { applyCustomButtonPlacement(detail) }
+    }
+
+    private fun findHeadsetDetailDeviceInfo(detail: Any): Any? {
+        runCatching { callMethod(detail, "getHeadsetDeviceInfo") }.getOrNull()?.let { return it }
+
+        val headsetDeviceInfoClass = runCatching {
+            findClass("com.miui.circulate.api.protocol.headset.HeadsetDeviceInfo")
+        }.getOrNull() ?: return null
+        var detailClass: Class<*>? = detail.javaClass
+        while (detailClass != null) {
+            for (field in detailClass.declaredFields) {
+                if (!headsetDeviceInfoClass.isAssignableFrom(field.type)) continue
+                val value = runCatching { field.apply { isAccessible = true }.get(detail) }.getOrNull()
+                if (value != null) return value
+            }
+            detailClass = detailClass.superclass
+        }
+        return null
+    }
+
+    private fun isTypeOneOppoHeadset(deviceInfo: Any?): Boolean {
+        if (deviceInfo == null) return false
+        val type = headsetDeviceType(deviceInfo)
+        if (type != MIRING_COMPAT_DEVICE_TYPE) return false
+
+        val addresses = readStringMembers(deviceInfo, listOf("mac", "deviceId", "address", "bluetoothAddress"))
+        if (addresses.any(::isOppoAddress)) return true
+        if (addresses.any { address -> address.equals(lastHeadsetDevice?.address, ignoreCase = true) }) return true
+
+        val name = readStringMembers(deviceInfo, listOf("name", "deviceName")).firstOrNull().orEmpty()
+        if (!name.contains("oppo", ignoreCase = true)) return false
+        addresses.firstOrNull()?.let { address ->
+            knownOppoAddresses.add(address.uppercase())
+            currentAddress = address
+        }
+        return true
+    }
+
+    private fun headsetDeviceType(deviceInfo: Any?): Int? {
+        return (runCatching { getObjectField(deviceInfo, "type") as? Number }.getOrNull()
+            ?: runCatching { callMethod(deviceInfo, "getType") as? Number }.getOrNull())?.toInt()
+    }
+
+    private fun findDetailSection(detail: Any, viewId: String): Any? {
+        var viewFallback: Any? = null
+        var detailClass: Class<*>? = detail.javaClass
+        while (detailClass != null) {
+            for (field in detailClass.declaredFields) {
+                val candidate = runCatching { field.apply { isAccessible = true }.get(detail) }.getOrNull() ?: continue
+                if (findSectionViewByEntryName(candidate, viewId) == null) continue
+                // A root View can contain every card. Prefer the owning section object so the
+                // known native h/j or m/o method remains the primary rendering path.
+                if (candidate is View) {
+                    if (viewFallback == null) viewFallback = candidate
+                } else {
+                    return candidate
+                }
+            }
+            detailClass = detailClass.superclass
+        }
+        return viewFallback
+    }
+
+    private fun findSectionViewByEntryName(section: Any, viewId: String): View? {
+        (section as? View)?.let { view ->
+            findViewByEntryName(view, viewId)?.let { return it }
+        }
+        var sectionClass: Class<*>? = section.javaClass
+        while (sectionClass != null) {
+            for (field in sectionClass.declaredFields) {
+                if (!View::class.java.isAssignableFrom(field.type)) continue
+                val view = runCatching { field.apply { isAccessible = true }.get(section) as? View }.getOrNull() ?: continue
+                findViewByEntryName(view, viewId)?.let { return it }
+            }
+            sectionClass = sectionClass.superclass
+        }
+        return null
+    }
+
+    private fun findViewByEntryName(root: View?, viewId: String): View? {
+        root ?: return null
+        if (resourceEntryName(root, root.id) == viewId) return root
+        val group = root as? ViewGroup ?: return null
+        for (index in 0 until group.childCount) {
+            findViewByEntryName(group.getChildAt(index), viewId)?.let { return it }
+        }
+        return null
+    }
+
+    private fun applySectionVisibility(
+        section: Any?,
+        card: View?,
+        control: View?,
+        visible: Boolean,
+        preferredMethodNames: List<String>
+    ): Boolean {
+        val applied = section?.let { invokeSectionBoolean(it, preferredMethodNames, visible) } == true
+        if (applied) return true
+
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        card?.visibility = visibility
+        control?.visibility = visibility
+        return false
+    }
+
+    private fun applySectionState(
+        section: Any?,
+        control: View?,
+        active: Boolean,
+        preferredMethodNames: List<String>
+    ) {
+        applySectionStateValue(section, control, if (active) 1 else 0, preferredMethodNames)
+    }
+
+    private fun applySectionStateValue(
+        section: Any?,
+        control: View?,
+        state: Int,
+        preferredMethodNames: List<String>
+    ): Boolean {
+        val applied = section?.let { invokeSectionInt(it, preferredMethodNames, state) } == true
+        if (!applied && state != FIND_RING_HIDDEN) setSynergyState(control, state == 1)
+        return applied
+    }
+
+    private fun invokeSectionBoolean(section: Any, preferredMethodNames: List<String>, value: Boolean): Boolean {
+        val method = findSectionMethod(section, preferredMethodNames, Boolean::class.javaPrimitiveType!!) ?: return false
+        return runCatching {
+            method.invoke(section, value)
+            true
+        }.onFailure { Log.w(TAG, "section visibility method ${method.name} failed", it) }.getOrDefault(false)
+    }
+
+    private fun invokeSectionInt(section: Any, preferredMethodNames: List<String>, value: Int): Boolean {
+        val method = findSectionMethod(section, preferredMethodNames, Int::class.javaPrimitiveType!!) ?: return false
+        return runCatching {
+            method.invoke(section, value)
+            true
+        }.onFailure { Log.w(TAG, "section state method ${method.name} failed", it) }.getOrDefault(false)
+    }
+
+    private fun findSectionMethod(section: Any, names: List<String>, parameterType: Class<*>): java.lang.reflect.Method? {
+        names.forEach { name ->
+            var sectionClass: Class<*>? = section.javaClass
+            while (sectionClass != null) {
+                sectionClass.declaredMethods.firstOrNull { method ->
+                    matchesMiLinkMethodName(method.name, name) &&
+                        method.parameterTypes.contentEquals(arrayOf(parameterType))
+                }?.let { method ->
+                    method.isAccessible = true
+                    return method
+                }
+                sectionClass = sectionClass.superclass
+            }
+        }
+        return null
+    }
+
+    /**
+     * JADX displays Kotlin source names such as o(), while the APK's runtime methods are often
+     * renamed to m25356o(). Keep the semantic suffix and accept both representations so an
+     * internal method-number change does not silently disable the native card update path.
+     */
+    private fun matchesMiLinkMethodName(runtimeName: String, sourceName: String): Boolean {
+        if (runtimeName == sourceName) return true
+        val prefix = runtimeName.removeSuffix(sourceName)
+        return prefix.startsWith("m") && prefix.length > 1 && prefix.substring(1).all(Char::isDigit)
+    }
+
+    private fun setDetailVisibilityFlag(
+        detail: Any,
+        setterName: String,
+        fieldName: String,
+        visible: Boolean
+    ): Boolean {
+        val setterApplied = runCatching {
+            val setter = findDetailMethod(detail, listOf(setterName), Boolean::class.javaPrimitiveType!!)
+                ?: return@runCatching false
+            setter.invoke(detail, visible)
+            true
+        }.onFailure { Log.w(TAG, "detail visibility setter $setterName failed", it) }.getOrDefault(false)
+        if (setterApplied) return true
+
+        return runCatching {
+            setObjectField(detail, fieldName, visible)
+            true
+        }.onFailure { Log.w(TAG, "detail visibility field $fieldName failed", it) }.getOrDefault(false)
+    }
+
+    private fun requestDetailHeightRefresh(detail: View) {
+        detail.post {
+            val refreshed = runCatching {
+                val method = findDetailMethod(detail, listOf("A")) ?: return@runCatching false
+                method.invoke(detail)
+                true
+            }.onFailure { Log.w(TAG, "HeadSetsDetail height refresh failed", it) }.getOrDefault(false)
+            if (!refreshed) {
+                detail.requestLayout()
+                (detail.parent as? View)?.requestLayout()
+            }
+        }
+    }
+
+    private fun findDetailMethod(
+        detail: Any,
+        names: List<String>,
+        parameterType: Class<*>? = null
+    ): java.lang.reflect.Method? {
+        names.forEach { name ->
+            var detailClass: Class<*>? = detail.javaClass
+            while (detailClass != null) {
+                detailClass.declaredMethods.firstOrNull { method ->
+                    matchesMiLinkMethodName(method.name, name) &&
+                        if (parameterType == null) method.parameterTypes.isEmpty()
+                        else method.parameterTypes.contentEquals(arrayOf(parameterType))
+                }?.let { method ->
+                    method.isAccessible = true
+                    return method
+                }
+                detailClass = detailClass.superclass
+            }
+        }
+        return null
+    }
+
+    private fun setSynergyState(view: View?, active: Boolean): Boolean {
+        val target = view ?: return false
+        var viewClass: Class<*>? = target.javaClass
+        while (viewClass != null) {
+            val method = viewClass.declaredMethods.firstOrNull { candidate ->
+                candidate.name == "setState" && candidate.parameterTypes.size == 1
+            }
+            if (method != null) {
+                val parameterType = method.parameterTypes[0]
+                val state = when {
+                    parameterType == Int::class.javaPrimitiveType || parameterType == Int::class.java -> {
+                        if (active) 1 else 0
+                    }
+                    parameterType.isEnum -> {
+                        val desired = if (active) "SUCCESS" else "NORMAL"
+                        parameterType.enumConstants?.firstOrNull { constant ->
+                            (constant as? Enum<*>)?.name == desired
+                        }
+                    }
+                    else -> null
+                } ?: return false
+                return runCatching {
+                    method.isAccessible = true
+                    method.invoke(target, state)
+                    true
+                }.onFailure { Log.w(TAG, "SynergyView.setState fallback failed", it) }.getOrDefault(false)
+            }
+            viewClass = viewClass.superclass
+        }
+        return false
+    }
+
+    private fun applyCustomButtonAppearance(view: View?, handler: CustomButtonHandler) {
+        val target = view ?: return
+        val active = handler.isActive()
+        setSynergyTitle(target, handler.title())
+        applySubtitle(target, target.id, handler.subtitle(active))
+        applyIcon(target, target.id, handler.icon(target))
+    }
+
+    private fun installLowerButtonClick(detail: View, control: View?, card: View?) {
+        listOfNotNull(control, card).distinct().forEach { target ->
+            lowerCustomButtonViews.removeAll { reference ->
+                reference.get() == null || reference.get() === target
+            }
+            lowerCustomButtonViews += WeakReference(target)
+            target.isClickable = true
+            target.setOnClickListener { clickedView ->
+                if (customButtonPosition != CustomButtonPosition.LOWER) return@setOnClickListener
+                val handler = activeHandler() ?: return@setOnClickListener
+                if (!consumeCustomButtonClick()) return@setOnClickListener
+
+                val clickedContext = clickedView.context
+                context = clickedContext.applicationContext ?: clickedContext
+                val enabled = !handler.isActive()
+                handler.onToggle(enabled, clickedContext)
+                saveState(clickedContext)
+                applyCustomButtonPlacement(detail)
+                notifyFindRingChanged()
+                Log.d(TAG, "lower custom button clicked enabled=$enabled function=$customButtonFunction")
+            }
+        }
+    }
+
+    private fun consumeCustomButtonClick(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastCustomButtonClickMs < CUSTOM_BUTTON_CLICK_THROTTLE_MS) return false
+        lastCustomButtonClickMs = now
+        return true
+    }
+
+    private fun customButtonTitleState(view: View, resId: Int): Boolean? {
+        return when (resourceEntryName(view, view.id)) {
+            MIRING_VIEW_ID -> {
+                if (customButtonPosition != CustomButtonPosition.UPPER) return null
+                when (resourceEntryName(view, resId)) {
+                    "circulate_headset_control_audio_find_earphone" -> false
+                    "circulate_headset_control_audio_stop_find_earphone" -> true
+                    else -> null
+                }
+            }
+            AUDIO_EFFECT_VIEW_ID -> {
+                if (customButtonPosition != CustomButtonPosition.LOWER) return null
+                when (resourceEntryName(view, resId)) {
+                    "circulate_headset_control_audio_effect_spatial" -> false
+                    "circulate_headset_control_audio_effect_off" -> true
+                    else -> null
+                }
+            }
+            else -> null
+        }
+    }
+
+    private fun isTargetCirculateServiceInfo(info: Any): Boolean {
+        val values = readStringMembers(info, listOf("deviceId", "mac", "address", "headsetId"))
+        return values.any(::isOppoAddress) || values.any { it == FAKE_DEVICE_ID }
+    }
+
+    private fun readStringMembers(target: Any?, names: List<String>): List<String> {
+        target ?: return emptyList()
+        return names.flatMap { name ->
+            val getterName = "get${name.substring(0, 1).uppercase()}${name.substring(1)}"
+            listOfNotNull(
+                runCatching { getObjectField(target, name) as? String }.getOrNull(),
+                runCatching { callMethod(target, getterName) as? String }.getOrNull()
+            )
+        }.distinct()
     }
 
     private fun hookCirculateHeadsetServiceInfo() {
@@ -521,14 +1098,36 @@ object MiLinkServiceHook : HookContext() {
                 val address = runCatching { getObjectField(instance, "deviceId") as? String }.getOrNull()
                 if (address != null && !isOppoAddress(address) && headsetId != FAKE_DEVICE_ID) return@hookAfter
                 if (address == null && headsetId != FAKE_DEVICE_ID) return@hookAfter
+                lastCirculateServiceInfo = WeakReference(instance)
+                lastCirculateHeadsetId = headsetId
+                lastCirculateHeadsetType = args[1] as? Int ?: lastCirculateHeadsetType
                 if (spatialAudioPanelEnabled()) return@hookAfter
-                val serviceProperties = runCatching { getObjectField(instance, "serviceProperties") }.getOrNull()
-                val bundle = runCatching { callMethod(serviceProperties, "getAll") as? Bundle }.getOrNull()
-                    ?: return@hookAfter
-                bundle.putInt("headset_switch_state", 0)
+                applySpatialSwitchState(instance)
                 Log.d(TAG, "CirculateServiceInfo.setHeadsetId disabled spatial switch address=$address headsetId=$headsetId")
             }
         }.onFailure { Log.w(TAG, "hook CirculateServiceInfo.setHeadsetId skipped", it) }
+    }
+
+    // 把 serviceProperties.headset_switch_state 按 spatialAudioPanelEnabled() 写为 1/0，
+    // 仅在 OPPO 设备的 CirculateServiceInfo 上生效。供 setHeadsetId 钩子与运行时切换复用。
+    private fun applySpatialSwitchState(info: Any?) {
+        val serviceProperties = runCatching { getObjectField(info, "serviceProperties") }.getOrNull() ?: return
+        val bundle = runCatching { callMethod(serviceProperties, "getAll") as? Bundle }.getOrNull() ?: return
+        val newState = if (spatialAudioPanelEnabled()) 1 else 0
+        if (bundle.getInt("headset_switch_state", -1) == newState) return
+        bundle.putInt("headset_switch_state", newState)
+        Log.d(TAG, "applySpatialSwitchState newState=$newState")
+    }
+
+    // 切换配置后立即更新已 attach 面板的 headset_switch_state 并重触发 setHeadsetId，
+    // 让面板重新读取 Bundle，避免空间音频开关残留显示。
+    private fun refreshSpatialSwitchVisibility() {
+        val info = lastCirculateServiceInfo?.get() ?: return
+        val headsetId = lastCirculateHeadsetId ?: return
+        applySpatialSwitchState(info)
+        runCatching { callMethod(info, "setHeadsetId", headsetId, lastCirculateHeadsetType) }
+            .onFailure { Log.w(TAG, "refreshSpatialSwitchVisibility: re-trigger setHeadsetId failed", it) }
+        Log.d(TAG, "refreshSpatialSwitchVisibility headsetId=$headsetId enabled=$milinkSpatialAudioOptionEnabled")
     }
 
     private fun hookHeadsetInfoNoArg(
@@ -554,6 +1153,7 @@ object MiLinkServiceHook : HookContext() {
         context = ctx.applicationContext ?: ctx
         refreshMilinkSpatialAudioOption()
         refreshCustomButtonFunction()
+        refreshCustomButtonPosition()
         loadState()
         val filter = IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
@@ -565,6 +1165,7 @@ object MiLinkServiceHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_SPATIAL_SOUND_CHANGED)
             addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
             addAction(OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED)
+            addAction(OppoPodsAction.ACTION_CUSTOM_BUTTON_POSITION_CHANGED)
         }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -572,12 +1173,18 @@ object MiLinkServiceHook : HookContext() {
                     OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
                         refreshMilinkSpatialAudioOption(intent)
                         saveState(context)
+                        refreshSpatialSwitchVisibility()
                         notifySpatialUiChanged()
                     }
                     OppoPodsAction.ACTION_CUSTOM_BUTTON_FUNCTION_CHANGED -> {
                         refreshCustomButtonFunction(intent)
                         saveState(context)
-                        // 立即刷新面板该控件的显隐
+                        // 立即刷新面板中当前选择位置的自定义控件。
+                        notifyFindRingChanged()
+                    }
+                    OppoPodsAction.ACTION_CUSTOM_BUTTON_POSITION_CHANGED -> {
+                        refreshCustomButtonPosition(intent)
+                        saveState(context)
                         notifyFindRingChanged()
                     }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
@@ -787,6 +1394,26 @@ object MiLinkServiceHook : HookContext() {
             ?.apply()
     }
 
+    // 解析自定义按钮位置：intent extra > 本地缓存 > 远程 prefs（默认 UPPER）。
+    private fun refreshCustomButtonPosition(intent: Intent? = null) {
+        val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cached = localPrefs
+            ?.takeIf { it.contains(CustomButtonPosition.PREF_KEY) }
+            ?.getString(CustomButtonPosition.PREF_KEY, null)
+            ?.let { CustomButtonPosition.fromPreference(it) }
+        customButtonPosition = if (intent?.hasExtra(CustomButtonPosition.PREF_KEY) == true) {
+            CustomButtonPosition.fromPreference(intent.getStringExtra(CustomButtonPosition.PREF_KEY))
+        } else {
+            reloadRemotePrefs()
+            runCatching {
+                CustomButtonPosition.fromPreference(prefs.getString(CustomButtonPosition.PREF_KEY, null))
+            }.getOrDefault(cached ?: CustomButtonPosition.UPPER)
+        }
+        localPrefs?.edit()
+            ?.putString(CustomButtonPosition.PREF_KEY, customButtonPosition.preferenceValue)
+            ?.apply()
+    }
+
     private fun miLinkBatteryLevels(): List<Int> {
         loadState()
         val left = batteryValue(currentBattery.left)
@@ -905,8 +1532,10 @@ object MiLinkServiceHook : HookContext() {
     }
 
     private fun notifyFindRingChanged(controller: Any? = lastHeadsetController, device: BluetoothDevice? = lastHeadsetDevice) {
-        if (controller == null || device == null) return
-        notifyHeadsetPropertyChanged(controller, device, HEADSET_FIND_RING_CHANGED)
+        if (controller != null && device != null) {
+            notifyHeadsetPropertyChanged(controller, device, HEADSET_FIND_RING_CHANGED)
+        }
+        refreshCustomButtonPlacement()
     }
 
     private fun notifySpatialUiChanged(
@@ -925,6 +1554,7 @@ object MiLinkServiceHook : HookContext() {
                 notifyHeadsetPropertyChanged(target, targetDevice, 4)
                 notifyProfileAudioEffectListeners(target, audioEffectState)
             }
+        refreshCustomButtonPlacement()
     }
 
     private fun syncSpatialModel(owner: Any?, device: BluetoothDevice, spatialMode: Int) {
@@ -979,7 +1609,12 @@ object MiLinkServiceHook : HookContext() {
         runCatching {
             val method = detailClass.getDeclaredMethod("onDetachedFromWindow").apply { isAccessible = true }
             hookBefore(method) { panelDetaching = true }
-            hookAfter(method) { panelDetaching = false }
+            hookAfter(method) {
+                panelDetaching = false
+                if (customButtonDetail?.get() === instance) {
+                    customButtonDetail = null
+                }
+            }
             Log.d(TAG, "hooked ${detailClass.name}.onDetachedFromWindow")
         }.onFailure { Log.w(TAG, "hook HeadSetsDetail.onDetachedFromWindow skipped", it) }
     }
@@ -1020,22 +1655,20 @@ object MiLinkServiceHook : HookContext() {
         }.onEach { it.isAccessible = true }
     }
 
-    // returns true if this title res = game-mode ON (stop_find_earphone / SUCCESS), false if OFF, null if not the game control.
-    // 仅作用于 MiRing（mi_audio_ringing_view，游戏模式真正挂载处），不再误改本地响铃 audio_ringing_view。
-    // 在 SynergyView 的 item_subtitle 上显示副标题（text=null → 不显示，保持原生）
+    // Applies to the two explicitly selected SynergyView instances only.
     private fun applySubtitle(view: View, resId: Int, text: CharSequence?) {
-        text ?: return
         runCatching {
-            val pkg = view.resources.getResourcePackageName(resId)
-            val subtitleId = view.resources.getIdentifier("item_subtitle", "id", pkg)
-            if (subtitleId == 0) {
-                Log.w(TAG, "applySubtitle skipped: item_subtitle id not found pkg=$pkg")
-                return
-            }
-            val subtitle = view.findViewById<TextView>(subtitleId) ?: return
-            subtitle.text = text
-            subtitle.visibility = View.VISIBLE
-            Log.d(TAG, "applySubtitle set text=$text id=$subtitleId")
+            val subtitle = (findViewByEntryName(view, "item_subtitle") as? TextView)
+                ?: run {
+                    val pkg = view.resources.getResourcePackageName(resId)
+                    val subtitleId = view.resources.getIdentifier("item_subtitle", "id", pkg)
+                    if (subtitleId == 0) return@run null
+                    view.findViewById<TextView>(subtitleId)
+                }
+                ?: return
+            subtitle.text = text ?: ""
+            subtitle.visibility = if (text == null) View.GONE else View.VISIBLE
+            Log.d(TAG, "applySubtitle set text=$text")
         }.onFailure { Log.w(TAG, "applySubtitle failed", it) }
     }
 
@@ -1043,15 +1676,16 @@ object MiLinkServiceHook : HookContext() {
     private fun applyIcon(view: View, resId: Int, drawable: Drawable?) {
         drawable ?: return
         runCatching {
-            val pkg = view.resources.getResourcePackageName(resId)
-            val iconId = view.resources.getIdentifier("item_icon", "id", pkg)
-            if (iconId == 0) {
-                Log.w(TAG, "applyIcon skipped: item_icon id not found pkg=$pkg")
-                return
-            }
-            val iconView = view.findViewById<ImageView>(iconId) ?: return
+            val iconView = (findViewByEntryName(view, "item_icon") as? ImageView)
+                ?: run {
+                    val pkg = view.resources.getResourcePackageName(resId)
+                    val iconId = view.resources.getIdentifier("item_icon", "id", pkg)
+                    if (iconId == 0) return@run null
+                    view.findViewById<ImageView>(iconId)
+                }
+                ?: return
             iconView.setImageDrawable(drawable.constantState?.newDrawable()?.mutate() ?: drawable)
-            Log.d(TAG, "applyIcon set id=$iconId")
+            Log.d(TAG, "applyIcon set")
         }.onFailure { Log.w(TAG, "applyIcon failed", it) }
     }
 
@@ -1074,11 +1708,22 @@ object MiLinkServiceHook : HookContext() {
     }
 
     private fun setSynergyTitle(view: View, title: CharSequence): Boolean {
-        return runCatching {
-            view.javaClass.getDeclaredMethod("setTitle", CharSequence::class.java).apply { isAccessible = true }
-                .invoke(view, title)
-            true
-        }.getOrDefault(false)
+        var viewClass: Class<*>? = view.javaClass
+        while (viewClass != null) {
+            viewClass.declaredMethods.firstOrNull { method ->
+                method.name == "setTitle" && method.parameterTypes.contentEquals(arrayOf(CharSequence::class.java))
+            }?.let { method ->
+                return runCatching {
+                    method.isAccessible = true
+                    method.invoke(view, title)
+                    true
+                }.onFailure { Log.w(TAG, "SynergyView.setTitle fallback failed", it) }.getOrDefault(false)
+            }
+            viewClass = viewClass.superclass
+        }
+        val titleView = findViewByEntryName(view, "item_title") as? TextView ?: return false
+        titleView.text = title
+        return true
     }
 
     private fun notifyHeadsetPropertyChanged(controller: Any?, device: BluetoothDevice, updateType: Int) {
@@ -1104,9 +1749,11 @@ object MiLinkServiceHook : HookContext() {
             .putString("name", currentName)
             .putInt("anc", currentAnc)
             .putBoolean("game_mode", currentGameMode)
+            .putBoolean("spatial_sound", currentSpatialSound)
             .putInt("spatial_audio_mode", currentSpatialAudioMode)
             .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
             .putString(CustomButtonFunction.PREF_KEY, customButtonFunction.preferenceValue)
+            .putString(CustomButtonPosition.PREF_KEY, customButtonPosition.preferenceValue)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
@@ -1125,11 +1772,17 @@ object MiLinkServiceHook : HookContext() {
         currentName = prefs.getString("name", currentName)
         currentAnc = prefs.getInt("anc", currentAnc)
         currentGameMode = prefs.getBoolean("game_mode", currentGameMode)
+        currentSpatialSound = prefs.getBoolean("spatial_sound", currentSpatialSound)
         currentSpatialAudioMode = prefs.getInt("spatial_audio_mode", currentSpatialAudioMode)
             .coerceIn(SpatialAudioMode.OFF, SpatialAudioMode.HEAD_TRACKING)
         if (prefs.contains(CustomButtonFunction.PREF_KEY)) {
             customButtonFunction = CustomButtonFunction.fromPreference(
                 prefs.getString(CustomButtonFunction.PREF_KEY, null)
+            )
+        }
+        if (prefs.contains(CustomButtonPosition.PREF_KEY)) {
+            customButtonPosition = CustomButtonPosition.fromPreference(
+                prefs.getString(CustomButtonPosition.PREF_KEY, null)
             )
         }
         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }

@@ -32,7 +32,12 @@ class HookEntry : XposedModule() {
             Log.w(TAG, "Hot reload skipped: no target class loader is available")
             return
         }
-        loadHookForPackage(param.processName, classLoader)
+        // HotReloadedParam exposes the process name (for example com.milink.service:ui),
+        // whereas hook selection is keyed by the owning package. Without this normalization a
+        // module update silently drops every hook in secondary processes.
+        val packageName = param.processName.substringBefore(':')
+        Log.d(TAG, "Hot reload package=$packageName process=${param.processName}")
+        loadHookForPackage(packageName, classLoader)
         val activeIds = activeHook?.hookIds().orEmpty()
         oldHooks.filter { it.id !in activeIds }.forEach(HookHandle::unhook)
     }

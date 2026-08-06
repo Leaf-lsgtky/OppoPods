@@ -61,9 +61,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
-import moe.chenxy.oppopods.pods.AssetKeys
-import moe.chenxy.oppopods.pods.DeviceProfileStore
-import moe.chenxy.oppopods.pods.ProfileAssets
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.ui.AppTheme
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
@@ -96,9 +95,7 @@ class ConnectionPopupActivity : ComponentActivity() {
         ).takeIf { it in OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS }
             ?: OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS
 
-        val connectVideoFile = ProfileAssets.file(
-            this, DeviceProfileStore.activeProfile(prefs), AssetKeys.CONNECT_VIDEO
-        )
+        val connectVideoFile = PodImageStore.customFile(this, PodImageSlot.CONNECT_VIDEO)
 
         setContent {
             AppTheme(colorSchemeMode = colorSchemeMode) {

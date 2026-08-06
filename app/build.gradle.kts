@@ -22,8 +22,8 @@ android {
         applicationId = "moe.chenxy.oppopods"
         minSdk = 35
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.1.2"
+        versionCode = 11
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.compose.material:material-icons-extended")
 
     // MIUIX
     implementation(libs.miuix)
@@ -103,4 +104,9 @@ dependencies {
 
     // HyperOS Focus Island API
     implementation(libs.focus.api)
+
+    // Unit tests. android.jar 里的 org.json 是空桩，用真实实现替换，
+    // 使 DeviceModelRegistry 的解析逻辑能在 JVM 上直接跑。
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

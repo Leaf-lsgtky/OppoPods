@@ -23,6 +23,10 @@
 
 项目使用 Java 22、AGP 9.1、Kotlin 2.3、Compose、Navigation 3、Miuix 和 LibXposed API 102。Release 启用 R8 和资源压缩；Debug 不执行 ProGuard/R8。GitHub Actions 在 `master`、`main`、`dev`、`v*` 标签及对应 PR 上用 Java 22 构建 release APK，并在提供签名密钥时签名和发布。
 
+## 工作区缓存
+
+构建或 IDE 产生的缓存（例如仓库根目录的 `.kotlin/`）必须保留在本地，不得为了消除未跟踪文件而删除、移动或执行清理。确认不应提交的缓存时，先将精确路径加入 `.gitignore`；来源或用途不明确时先询问用户。
+
 ## 编码风格与约定
 
 使用 Kotlin 与 Gradle Kotlin DSL，采用 4 空格缩进。类型、页面和 Composable 使用 `PascalCase`；函数、变量、preference key 使用 `camelCase`。仓库未配置 ktlint 或 detekt，至少应运行 debug 构建；改动资源、Manifest 或 API 用法时再运行 Lint。

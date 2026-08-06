@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.CustomButtonFunction
+import moe.chenxy.oppopods.pods.CustomButtonPosition
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.ui.effect.BgEffectBackground
 import moe.chenxy.oppopods.ui.effect.ColorBlendToken
@@ -82,8 +83,8 @@ import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurBlendMode
 import top.yukonga.miuix.kmp.blur.BlurColors
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.isRenderEffectSupported
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
@@ -221,7 +222,10 @@ fun AdvancedSettingsPage(
     onMilinkSpatialAudioOptionEnabledChange: (Boolean) -> Unit = {},
     customButtonFunction: MutableState<CustomButtonFunction> =
         mutableStateOf(CustomButtonFunction.GAME_MODE),
-    onCustomButtonFunctionChange: (CustomButtonFunction) -> Unit = {}
+    onCustomButtonFunctionChange: (CustomButtonFunction) -> Unit = {},
+    customButtonPosition: MutableState<CustomButtonPosition> =
+        mutableStateOf(CustomButtonPosition.UPPER),
+    onCustomButtonPositionChange: (CustomButtonPosition) -> Unit = {}
 ) {
     val rfcommConnectionOptions = listOf(
         stringResource(R.string.rfcomm_connection_method_uuid),
@@ -234,6 +238,10 @@ fun AdvancedSettingsPage(
         if (adaptiveVisible) add(stringResource(R.string.custom_button_function_adaptive))
         if (spatialSoundVisible) add(stringResource(R.string.custom_button_function_spatial_sound))
     }
+    val customButtonPositionOptions = listOf(
+        stringResource(R.string.custom_button_position_upper),
+        stringResource(R.string.custom_button_position_lower)
+    )
     val popupDismissSecondOptions = OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS
     val popupDismissSecondLabels = popupDismissSecondOptions.map {
         stringResource(R.string.connection_popup_duration_seconds, it)
@@ -272,6 +280,14 @@ fun AdvancedSettingsPage(
                         if (spatialSoundVisible) visibleIndices.add(3)
                         val enumIndex = visibleIndices.getOrElse(index) { index }
                         onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(enumIndex))
+                    }
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.custom_button_position),
+                    items = customButtonPositionOptions,
+                    selectedIndex = CustomButtonPosition.selectedIndexOf(customButtonPosition.value),
+                    onSelectedIndexChange = {
+                        onCustomButtonPositionChange(CustomButtonPosition.fromSelectedIndex(it))
                     }
                 )
                 OverlayDropdownPreference(
@@ -800,6 +816,10 @@ private fun AboutContent(
                         ArrowPreference(
                             title = stringResource(R.string.author_star_zero),
                             onClick = { uriHandler.openUri("https://www.coolapk.com/u/2380718") }
+                        )
+                        ArrowPreference(
+                            title = "Zhaoyi-ya",
+                            onClick = { uriHandler.openUri("https://github.com/Zhaoyi-ya") }
                         )
                     }
 

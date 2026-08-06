@@ -13,9 +13,8 @@ import android.os.Looper
 import android.util.Log
 import com.xzakota.hyper.notification.focus.FocusNotification
 import moe.chenxy.oppopods.R
-import moe.chenxy.oppopods.pods.AssetKeys
-import moe.chenxy.oppopods.pods.DeviceProfile
-import moe.chenxy.oppopods.pods.ProfileAssets
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 
 @SuppressLint("WrongConstant", "MissingPermission", "NotificationPermission")
@@ -30,8 +29,7 @@ object FocusIslandUtil {
 
     fun showBatteryIsland(
         context: Context,
-        batteryParams: BatteryParams,
-        profile: DeviceProfile? = null
+        batteryParams: BatteryParams
     ): Boolean {
         try {
             val leftConnected = batteryParams.left?.isConnected == true
@@ -47,12 +45,12 @@ object FocusIslandUtil {
             val moduleContext = context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            // 优先用当前配置档的岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
+            // 优先用用户自定义的岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
             // 内置资源按名字解析（而非编译期 R 常量），避免模块更新后资源 ID 移位取到错图。
-            val leftBitmap = loadProfileBitmap(context, profile, AssetKeys.ISLAND_LEFT)
+            val leftBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_LEFT)
                 ?: moduleContext.resources.getIdentifier("img_left", "drawable", MODULE_PACKAGE)
                     .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
-            val rightBitmap = loadProfileBitmap(context, profile, AssetKeys.ISLAND_RIGHT)
+            val rightBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_RIGHT)
                 ?: moduleContext.resources.getIdentifier("img_right", "drawable", MODULE_PACKAGE)
                     .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
 
@@ -144,11 +142,11 @@ object FocusIslandUtil {
         }
     }
 
-    /** 经 ContentProvider 读取当前配置档的岛图（跨进程）；无则返回 null 由调用方回退内置资源。 */
-    private fun loadProfileBitmap(context: Context, profile: DeviceProfile?, key: String): Bitmap? {
-        val uri = profile?.let { ProfileAssets.assetUri(it, key) } ?: return null
+    /** 经 ContentProvider 读取用户自定义岛图（跨进程）；未设置则返回 null 由调用方回退内置资源。 */
+    private fun loadCustomBitmap(context: Context, slot: PodImageSlot): Bitmap? {
         return runCatching {
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-        }.onFailure { Log.w(TAG, "loadProfileBitmap failed key=$key", it) }.getOrNull()
+            context.contentResolver.openInputStream(PodImageStore.uri(slot))
+                ?.use { BitmapFactory.decodeStream(it) }
+        }.onFailure { Log.w(TAG, "loadCustomBitmap failed slot=${slot.key}", it) }.getOrNull()
     }
 }
