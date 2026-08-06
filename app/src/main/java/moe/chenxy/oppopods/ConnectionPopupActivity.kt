@@ -61,11 +61,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.ui.AppTheme
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class ConnectionPopupActivity : ComponentActivity() {
@@ -84,8 +87,7 @@ class ConnectionPopupActivity : ComponentActivity() {
             else -> ColorSchemeMode.System
         }
 
-        val initialBatteryParams = intent.getParcelableExtra("status", BatteryParams::class.java)
-            ?: BatteryParams()
+        val initialBatteryParams = intent.batteryStatusCompat() ?: BatteryParams()
         val initialDeviceName = intent.getStringExtra("device_name").orEmpty()
         val autoDismissSeconds = intent.getIntExtra(
             OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS,
@@ -93,12 +95,15 @@ class ConnectionPopupActivity : ComponentActivity() {
         ).takeIf { it in OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS }
             ?: OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS
 
+        val connectVideoFile = PodImageStore.customFile(this, PodImageSlot.CONNECT_VIDEO)
+
         setContent {
             AppTheme(colorSchemeMode = colorSchemeMode) {
                 ConnectionPopupContent(
                     initialDeviceName = initialDeviceName,
                     initialBatteryParams = initialBatteryParams,
                     autoDismissSeconds = autoDismissSeconds,
+                    videoFile = connectVideoFile,
                     onDismiss = { finish() }
                 )
             }
@@ -111,6 +116,7 @@ private fun ConnectionPopupContent(
     initialDeviceName: String,
     initialBatteryParams: BatteryParams,
     autoDismissSeconds: Int,
+    videoFile: java.io.File? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -125,7 +131,7 @@ private fun ConnectionPopupContent(
                         deviceName.value = intent.getStringExtra("device_name") ?: deviceName.value
                     }
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
-                        intent.getParcelableExtra("status", BatteryParams::class.java)?.let {
+                        intent.batteryStatusCompat()?.let {
                             batteryParams.value = it
                         }
                     }
@@ -158,6 +164,7 @@ private fun ConnectionPopupContent(
     ConnectionPopupCard(
         deviceName = deviceName.value.ifEmpty { stringResource(R.string.app_name) },
         batteryParams = batteryParams.value,
+        videoFile = videoFile,
         onDismiss = onDismiss
     )
 }
@@ -166,6 +173,7 @@ private fun ConnectionPopupContent(
 private fun ConnectionPopupCard(
     deviceName: String,
     batteryParams: BatteryParams,
+    videoFile: java.io.File? = null,
     onDismiss: () -> Unit
 ) {
     val videoBackgroundColor = Color(0xFFFBFBFB)
@@ -222,7 +230,8 @@ private fun ConnectionPopupCard(
                 ConnectionVideo(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(960f / 312f)
+                        .aspectRatio(960f / 312f),
+                    videoFile = videoFile
                 )
                 Spacer(modifier = Modifier.height(22.dp))
 
@@ -274,12 +283,12 @@ private fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun ConnectionVideo(modifier: Modifier = Modifier) {
+private fun ConnectionVideo(modifier: Modifier = Modifier, videoFile: java.io.File? = null) {
     Box(modifier = modifier.background(Color(0xFFFBFBFB))) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
-                LoopingResourceVideoView(context)
+                LoopingResourceVideoView(context, videoFile)
             }
         )
     }
@@ -434,8 +443,10 @@ private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
     }
 }
 
-private class LoopingResourceVideoView(context: Context) : TextureView(context),
-    TextureView.SurfaceTextureListener {
+private class LoopingResourceVideoView(
+    context: Context,
+    private val videoFile: java.io.File? = null
+) : TextureView(context), TextureView.SurfaceTextureListener {
 
     private var mediaPlayer: MediaPlayer? = null
     private var mediaSurface: Surface? = null
@@ -468,10 +479,15 @@ private class LoopingResourceVideoView(context: Context) : TextureView(context),
         val surface = Surface(surfaceTexture)
         mediaSurface = surface
         mediaPlayer = MediaPlayer().apply {
-            setDataSource(
-                context,
-                Uri.parse("android.resource://${context.packageName}/${R.raw.boot_connected_state}")
-            )
+            val customVideo = videoFile?.takeIf { it.exists() }
+            if (customVideo != null) {
+                setDataSource(customVideo.path)
+            } else {
+                setDataSource(
+                    context,
+                    Uri.parse("android.resource://${context.packageName}/${R.raw.boot_connected_state}")
+                )
+            }
             setSurface(surface)
             isLooping = true
             setVolume(0f, 0f)

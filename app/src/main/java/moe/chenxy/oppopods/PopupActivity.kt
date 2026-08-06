@@ -30,12 +30,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import moe.chenxy.oppopods.pods.DeviceProfile
+import moe.chenxy.oppopods.pods.DeviceProfileStore
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.ui.AppTheme
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -84,8 +87,12 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
 
     val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
     val themeMode = remember { prefs.getInt("theme_mode", 0) }
-    // 读取Adaptive模式偏好设置
-    val adaptiveModeEnabled = remember { prefs.getBoolean("adaptive_mode", true) }
+    val activeProfile = remember {
+        mutableStateOf(
+            runCatching { DeviceProfileStore.resolveProfile(context, prefs) }
+                .getOrElse { DeviceProfile("popup_fallback", "Unknown") }
+        )
+    }
     val systemDark = isSystemInDarkTheme()
     val isDarkMode = when (themeMode) {
         1 -> false
@@ -112,13 +119,20 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                             else -> NoiseControlMode.OFF
                         }
                     }
+
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
-                        p1.getParcelableExtra("status", BatteryParams::class.java)?.let {
+                        p1.batteryStatusCompat()?.let {
                             batteryParams.value = it
                         }
                     }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
-                        deviceName.value = p1.getStringExtra("device_name") ?: ""
+                        val name = p1.getStringExtra("device_name") ?: ""
+                        deviceName.value = name
+                        if (name.isNotBlank()) {
+                            runCatching {
+                                DeviceProfileStore.resolveProfile(context, prefs, name)
+                            }.onSuccess { activeProfile.value = it }
+                        }
                         if (!showDialog.value) showDialog.value = true
                     }
                     OppoPodsAction.ACTION_PODS_DISCONNECTED -> {
@@ -217,7 +231,8 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     onGameModeChange = ::setGameMode,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
-                    adaptiveModeEnabled = adaptiveModeEnabled
+                    adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
+                    gameModeVisible = activeProfile.value.gameModeVisible
                 )
             } else {
                 PortraitPopupBody(
@@ -228,7 +243,8 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     onGameModeChange = ::setGameMode,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
-                    adaptiveModeEnabled = adaptiveModeEnabled
+                    adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
+                    gameModeVisible = activeProfile.value.gameModeVisible
                 )
             }
         }
@@ -244,7 +260,8 @@ private fun PortraitPopupBody(
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
-    adaptiveModeEnabled: Boolean = true
+    adaptiveModeEnabled: Boolean = true,
+    gameModeVisible: Boolean = true
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -259,12 +276,14 @@ private fun PortraitPopupBody(
         }
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
-            SwitchPreference(
-                title = stringResource(R.string.game_mode),
-                summary = stringResource(R.string.game_mode_summary),
-                checked = gameMode,
-                onCheckedChange = onGameModeChange
-            )
+            if (gameModeVisible) {
+                SwitchPreference(
+                    title = stringResource(R.string.game_mode),
+                    summary = stringResource(R.string.game_mode_summary),
+                    checked = gameMode,
+                    onCheckedChange = onGameModeChange
+                )
+            }
         }
         Spacer(modifier = Modifier.height(16.dp))
         Row(
@@ -294,7 +313,8 @@ private fun LandscapePopupBody(
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
-    adaptiveModeEnabled: Boolean = true
+    adaptiveModeEnabled: Boolean = true,
+    gameModeVisible: Boolean = true
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
@@ -322,13 +342,15 @@ private fun LandscapePopupBody(
             modifier = Modifier.weight(0.40f).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            TextButton(
-                text = stringResource(
-                    if (gameMode) R.string.disable_game_mode else R.string.enable_game_mode
-                ),
-                onClick = { onGameModeChange(!gameMode) },
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
+            if (gameModeVisible) {
+                TextButton(
+                    text = stringResource(
+                        if (gameMode) R.string.disable_game_mode else R.string.enable_game_mode
+                    ),
+                    onClick = { onGameModeChange(!gameMode) },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
             TextButton(
                 text = stringResource(R.string.more),
                 onClick = onMore,

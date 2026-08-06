@@ -4,14 +4,21 @@ import android.content.SharedPreferences
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import java.lang.reflect.Constructor
+import java.lang.reflect.Executable
 import java.lang.reflect.Method
 
 abstract class HookContext {
     lateinit var module: XposedModule
     lateinit var appClassLoader: ClassLoader
     lateinit var prefs: SharedPreferences
+    private val hookHandles = mutableListOf<XposedInterface.HookHandle>()
 
     abstract fun onHook()
+
+    /** Releases resources retained by target-process objects before API 102 hot reload. */
+    open fun onHotReloading() = Unit
+
+    fun hookIds(): Set<String> = hookHandles.mapNotNullTo(linkedSetOf()) { it.id }
 
     fun findClass(name: String): Class<*> = Class.forName(name, false, appClassLoader)
 
@@ -30,22 +37,39 @@ abstract class HookContext {
             .apply { isAccessible = true }
 
     fun hookAfter(method: Method, block: HookParam.() -> Unit) {
-        module.hook(method).intercept { chain ->
+        registerHook(method, "after") { chain ->
             val result = chain.proceed()
             HookParam(chain, result).apply(block).result
         }
     }
 
     fun hookBefore(method: Method, block: HookParam.() -> Unit) {
-        module.hook(method).intercept { chain ->
+        registerHook(method, "before") { chain ->
             val param = HookParam(chain, null).apply(block)
             if (param.hasResult) param.result else chain.proceed()
         }
     }
 
     fun hookConstructorAfter(constructor: Constructor<*>, block: HookParam.() -> Unit) {
-        module.hook(constructor).intercept { chain ->
+        registerHook(constructor, "constructor-after") { chain ->
             chain.proceed().also { HookParam(chain, it).apply(block) }
+        }
+    }
+
+    private fun registerHook(
+        executable: Executable,
+        phase: String,
+        hooker: XposedInterface.Hooker
+    ) {
+        val id = "$phase:${executable.toGenericString()}"
+        hookHandles += module.hook(executable).setId(id).intercept(hooker)
+    }
+
+    fun reloadRemotePrefs() {
+        runCatching {
+            prefs.javaClass.methods.firstOrNull {
+                it.name == "reload" && it.parameterTypes.isEmpty()
+            }?.invoke(prefs)
         }
     }
 }
@@ -68,6 +92,19 @@ fun getObjectField(instance: Any?, fieldName: String): Any? {
     while (cls != null) {
         runCatching {
             return cls.getDeclaredField(fieldName).apply { isAccessible = true }.get(instance)
+        }
+        cls = cls.superclass
+    }
+    throw NoSuchFieldException(fieldName)
+}
+
+fun setObjectField(instance: Any?, fieldName: String, value: Any?) {
+    if (instance == null) return
+    var cls: Class<*>? = instance.javaClass
+    while (cls != null) {
+        runCatching {
+            cls.getDeclaredField(fieldName).apply { isAccessible = true }.set(instance, value)
+            return
         }
         cls = cls.superclass
     }

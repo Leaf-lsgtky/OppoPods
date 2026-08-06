@@ -118,7 +118,210 @@ OppoPods 当前已经使用或解析的命令：
 | 批量状态查询 | `0x010D` | 查询 feature switch，payload 为数量 + feature id 列表 |
 | 批量状态响应 | `0x810D` | `0x28` 是游戏模式主开关，`0x06` 是低延迟游戏模式 |
 | 设置游戏模式 | `0x0403` | 标准模式只发 `28 01/00`；兼容模式开启发 `28 01` + `06 01`，关闭发 `06 00` + `28 00` |
-| 设置 ANC | `0x0404` | `01 01 <mode>` |
+| 设置佩戴检测 | `0x0403` | featureId `04 01/00`，对应官方 `wearDetection` |
+| 设置双设备连接 | `0x0403` | featureId `11 01/00`，对应官方 `multiDevicesConnect` |
+| 设置 ANC | `0x0404` | `01 01 <mode>`；降噪深度用 `01 01 <level>`（level: `80`=智能 `40`=轻度 `20`=中度 `10`=深度） |
+| 查询空间音频类型 | `0x012A` | 官方 `getHeadsetSpatialType`，空 payload |
+| 设置空间音频类型 | `0x0422` | payload 为单字节 `<type>`：`00`=关闭，`01`=固定，`02`=头部跟踪 |
+| 空间音频主动上报 | `0x0510` | payload 首字节为当前 `<type>` |
+| 查询通知能力 | `0x0200` | `CMD_GET_NOTIFICATION_CAPABILITY`，空 payload |
+| 通知能力响应 | `0x8200` | `[status] [count] [eventCode1] [eventCode2] ...` |
+| 订阅通知 | `0x0205` | `CMD_REGISTER_NOTIFICATION_MULTI`，payload `[count] [code1] [code2] ...` |
+| 订阅通知响应 | `0x8205` | 订阅成功确认 |
+
+### 空间音频
+
+当前 OppoPods 按官方新空间音频协议实现三档控制，只使用 `0x0422 setHeadsetSpatialType`，暂不把 `0x0403 featureId=0x1B` 当作三档菜单的控制路径。
+
+完整外层包：
+
+```text
+关闭:     AA 08 00 00 22 04 F0 01 00 00
+固定:     AA 08 00 00 22 04 F0 01 00 01
+头部跟踪: AA 08 00 00 22 04 F0 01 00 02
+```
+
+实现位置：
+
+- `Packets.kt`
+  - `SpatialAudioMode.OFF = 0`
+  - `SpatialAudioMode.FIXED = 1`
+  - `SpatialAudioMode.HEAD_TRACKING = 2`
+  - `Enums.spatialAudioPacket(mode)` 生成 `0x0422` 包
+  - `SpatialAudioParser` 解析 `0x0510` 主动上报和 `0x8422` 设置响应
+- `RfcommController.kt` / `AppRfcommController.kt`
+  - `setSpatialAudioMode(mode)` 乐观更新 UI，再发送 `Enums.spatialAudioPacket(mode)`
+  - 收到 `0x0510` 后广播 `ACTION_PODS_SPATIAL_AUDIO_CHANGED`
+
+### 降噪深度
+
+降噪深度（Noise Level）仅在降噪模式（NC）下有效。通过 `0x0404` 命令设置，复用 ANC 设置通道。
+
+欢律官方使用 `type=2` 格式 `01 02 <level>`，zerOBuds 使用 `01 01 <level>`。两种方案均通过 `Cmd.SET_ANC (0x0404)` 发送。OppoPods 采用与 zerOBuds 一致的 `01 01 <level>` 格式。
+
+等级值：
+
+| 值 | 含义 |
+|---:|---|
+| `0x80` | 智能 |
+| `0x40` | 轻度 |
+| `0x20` | 中度 |
+| `0x10` | 深度 |
+
+外层包示例（以深度为例）：
+
+```text
+AA 08 00 00 04 04 F0 03 00 01 01 10
+```
+
+实现位置：
+
+- `Packets.kt`
+  - `NoiseLevel` 对象定义四个常量 + `ALL` 列表
+  - `AncModeParser.AncResult` 扩展了 `noiseLevel` 字段，解析 `01 01 [level] 00` 中的降噪等级值
+- `DeviceProfile.kt`
+  - `noiseLevelVisible` 控制降噪深度 UI 显隐
+  - `noiseLevelPacket(level)` 按 ProfileKey 发包
+  - ProfileKeys: `SET_NOISE_LEVEL_SMART/LIGHT/MEDIUM/DEEP`
+- `RfcommController.kt` / `AppRfcommController.kt`
+  - `setNoiseLevel(level)` 乐观更新 UI + 发送降噪深度包
+  - 收到 ANC 响应/通知时同时提取 noiseLevel
+
+### 佩戴检测（自动播放暂停）
+
+佩戴检测（Wear Detection / Auto Play Pause）通过 `0x0403` feature switch 命令控制，feature ID 为 `0x04`。
+
+官方方法名：`BtOperate.m2704Q(address, featureId=0x04, enabled, needGetState)`
+
+设置包：
+
+```text
+开启: AA 09 00 00 03 04 F0 02 00 04 01
+关闭: AA 09 00 00 03 04 F0 02 00 04 00
+```
+
+批量查询 `0x010D` 响应中 feature ID `0x04` 的值表示当前开关状态。
+
+`0x0204` 主动上报中暂未确认佩戴检测独立 eventCode，当前通过 `0x810D` 批量响应解析状态。
+
+实现位置：
+
+- `Packets.kt`
+  - `BatchParamId.AUTO_PLAY_PAUSE = 0x04`
+  - `GameModeParser.Status` 扩展 `autoPlayPause` 字段，从 `0x810D` 响应解析
+- `DeviceProfile.kt`
+  - `autoPlayPauseVisible` 控制 UI 显隐
+  - `autoPlayPausePacket(enabled)` 发送 `0x0403` 包
+  - ProfileKeys: `SET_AUTO_PLAY_PAUSE_ON/OFF`
+- `RfcommController.kt` / `AppRfcommController.kt`
+  - `setAutoPlayPause(enabled)` 乐观更新 + 发包
+  - `changeUIAutoPlayPauseStatus()` 广播状态变更
+
+### 双设备连接
+
+双设备连接（Dual Device / Multi Devices Connect）通过 `0x0403` feature switch 命令控制，feature ID 为 `0x11`。
+
+官方方法名：`BtOperate.m2704Q(address, featureId=0x11, enabled, needGetState)`
+
+设置包：
+
+```text
+开启: AA 09 00 00 03 04 F0 02 00 11 01
+关闭: AA 09 00 00 03 04 F0 02 00 11 00
+```
+
+批量查询 `0x010D` 响应中 feature ID `0x11` 的值表示当前开关状态。
+
+`0x0204` 主动上报 eventCode `0x06` 对应 `MultiConnectInformations`，可承载已连接设备列表信息。当前 OppoPods 通过 `0x810D` 批量响应解析开关状态，设备名称信息待后续 `0x0204` eventCode `0x06` 解析支持。
+
+实现位置：
+
+- `Packets.kt`
+  - `BatchParamId.DUAL_DEVICE = 0x11`
+  - `GameModeParser.Status` 扩展 `dualDevice` 字段，从 `0x810D` 响应解析
+- `DeviceProfile.kt`
+  - `dualDeviceVisible` 控制 UI 显隐
+  - `dualDevicePacket(enabled)` 发送 `0x0403` 包
+  - ProfileKeys: `SET_DUAL_DEVICE_ON/OFF`
+- `RfcommController.kt` / `AppRfcommController.kt`
+  - `setDualDevice(enabled)` 乐观更新 + 发包
+  - `changeUIDualDeviceStatus()` 广播状态变更
+
+### 通知能力查询与订阅
+
+OppoPods 连接后遵循欢律官方初始化流程，先查询耳机支持哪些主动上报事件，再批量注册订阅。
+
+流程：
+
+```text
+1. App → 耳机: 0x0200 (QUERY_BROADCAST_CODES, 空 payload)
+2. 耳机 → App: 0x8200 响应 [status] [count] [eventCode1] [eventCode2] ...]
+3. App → 耳机: 0x0205 (SUBSCRIBE_BROADCAST, payload [count] [code1] [code2] ...])
+4. 耳机 → App: 0x8205 确认
+5. App → 耳机: 0x010D + 0x0106 + 0x010C (批量状态查询)
+```
+
+已知 eventCode（来自欢律反编译）：
+
+| eventCode | 含义 |
+|---:|---|
+| `0x01` | 电量变化 |
+| `0x02` | 佩戴状态 |
+| `0x03` | 降噪模式变化 |
+| `0x05` | 游戏模式变化 |
+| `0x06` | 多设备连接信息（已连接设备名称） |
+| `0xF2` | 连接设备列表 |
+
+不注册时耳机默认可能推送部分通知（如 ANC、电量），但 `0x06` 多设备连接信息需要注册后才会推送。
+
+实现位置：
+
+- `Packets.kt`
+  - `OppoPackets.buildQueryBroadcastCodes()` 构建 `0x0200` 包
+  - `OppoPackets.buildSubscribeBroadcast(codes)` 构建 `0x0205` 包
+  - `BroadcastCodesParser.parse()` 解析 `0x8200` 响应
+  - `ConnectedDevicesParser.parse()` 解析 `0x0204` eventCode `0x06`
+- `AppRfcommController.kt`
+  - `connect()` 中连接成功后发 `0x0200` → 收到 `0x8200` 自动发 `0x0205` → 再发 `queryStatus()`
+  - `handlePacket` 中处理 `0x8200`、`0x8205`、`0x0204` eventCode `0x06`
+- `RfcommController.kt`
+  - 同样的注册流程和响应处理
+
+### MiLink 卡片空间音频入口
+
+高级设置项 `在 MiLink 卡片添加空间音频选项` 对应偏好键：
+
+```text
+milink_spatial_audio_option_enabled
+```
+
+默认值为 `true`。App 保存后广播：
+
+```text
+ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED
+```
+
+目标进程：
+
+```text
+com.milink.service
+com.android.settings
+```
+
+MiLink 的模式值和 OPPO 空间音频类型映射：
+
+| MiLink 值 | 含义 | OPPO `0x0422` type |
+|---:|---|---:|
+| `0` | 关闭 | `0` |
+| `1` | 固定空间音频 | `1` |
+| `9` | 手机头部跟踪 | `2` |
+| `11` | 耳机头部跟踪 | `2` |
+
+Hook 方法：
+
+- 开关开启时，`MiLinkServiceHook` 让 `getSpatialMode` / `getMiAudioEffect` / `getAudioSpatialEffectState` 返回当前空间音频状态，并 hook `setSpatialMode` / `setMiAudioEffect` / `setHeadTracking` / `setAudioEffectState` 转发为 OPPO `0x0422`。
+- 开关关闭时，MiLink 空间音频相关 getter 返回 unsupported，`isSupportAudioSwitch` / `getSwitchState` 返回不支持，MiLink 发起的空间音频命令被拦截，不发送 OPPO 包。
+- UI 同步时写入 `AncBatteryModel.spatialState` 和 `deviceSpatialType`，并通知 `headsetPropertyChangeListener` 的 updateType `9` 和 `4`。
 
 ## OppoPods 当前落地
 
@@ -153,5 +356,11 @@ adb logcat -s OppoPods-RfcommController OppoPods-AppRfcomm
 
 - UUID 经 SDP 最终解析出的实际 RFCOMM channel 需要 HCI snoop 或反射读取 `BluetoothSocket` 内部字段确认。
 - 欢律 packet 内层和 OppoPods 当前 `AA` 外层之间的拆包/封包位置还可以继续深挖，尤其是 read loop 中对原始流的切包逻辑。
-- `0x0204` 主动上报复用了多种事件，当前只处理了电量和 ANC，按钮事件还可以继续解析。
+- `0x0204` 主动上报按钮事件（eventCode `0xF1`）还可以继续解析。
 - `0x010D/0x810D` 的 key-value payload 还有更多 feature key；游戏模式相关至少包括主开关 `0x28` 和低延迟 `0x06`。
+- 降噪深度：官方 `type=2` 格式 `01 02 <level>` 与 zerOBuds `01 01 <level>` 哪种在 Enco X3/Free4 上生效需实机确认。
+- 佩戴检测：`0x0403 featureId=0x04` 设置和 `0x810D` 响应解析需实机确认。
+- 双设备连接：`0x0403 featureId=0x11` 设置和 `0x0204` eventCode `0x06` 设备列表解析需实机确认。
+- 通知注册流程：`0x0200` → `0x8200` → `0x0205` → `0x8205` 是否在 Enco X3/Free4 上正常工作需实机确认。
+- `0x0204` eventCode `0x06` 的 payload 格式（MAC、连接状态、设备名）需抓包确认。
+- `AncModeParser` 现在只处理 eventCode `0x03`/`0x04`，跳过 `0x01`/`0x02`/`0x05`/`0x06` 等，需实机确认 ANC 通知不被误跳过。

@@ -1,5 +1,6 @@
 *.iml
 .gradle
+/.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -19,3 +20,4 @@ assets/xposed_init
 resources/META-INF/yukihookapi_init
 opencode.json
 /.idea
+/.workbuddy/

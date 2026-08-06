@@ -11,8 +11,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
-import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.MilinkSpatialAudioOptionSettings
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import java.util.WeakHashMap
 
 @SuppressLint("MissingPermission")
@@ -27,10 +30,12 @@ object SettingsHeadsetHook : HookContext() {
     private val headsetFragments = WeakHashMap<Any, Boolean>()
     private var context: Context? = null
     private var receiverRegistered = false
+    private var statusReceiver: BroadcastReceiver? = null
     private var currentAddress: String? = null
     private var currentName: String? = null
     private var currentBattery: BatteryParams = BatteryParams()
     private var currentAnc = 1
+    private var milinkSpatialAudioOptionEnabled = OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED
     private var proxyCheckSupportCalls = 0
     private var proxySetCommonCommandCalls = 0
     private var proxyGetDeviceConfigCalls = 0
@@ -55,6 +60,15 @@ object SettingsHeadsetHook : HookContext() {
         hookServiceProxy()
         hookBatteryView()
         hookFragmentState()
+    }
+
+    override fun onHotReloading() {
+        refreshHandler.removeCallbacksAndMessages(null)
+        refreshLoopStarted = false
+        statusReceiver?.let { receiver -> runCatching { context?.unregisterReceiver(receiver) } }
+        statusReceiver = null
+        receiverRegistered = false
+        context = null
     }
 
     private fun hookActivityEntry() {
@@ -157,7 +171,9 @@ object SettingsHeadsetHook : HookContext() {
         val proxyClass = "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub\$Proxy"
         hookProxyStringResult(proxyClass, "checkSupport", BluetoothDevice::class.java) { FAKE_SUPPORT }
         hookProxyStringArgResult(proxyClass, "getDeviceInfo") { FAKE_SUPPORT }
-        hookProxyStringArgResult(proxyClass, "isSupportAudioSwitch") { "1" }
+        hookProxyStringArgResult(proxyClass, "isSupportAudioSwitch") {
+            if (milinkSpatialAudioOptionEnabled) "1" else "0"
+        }
         hookProxyStringArgResult(proxyClass, "setCommonCommand", Int::class.java, String::class.java, BluetoothDevice::class.java) { commandArgs ->
             val command = commandArgs[0] as? Int
             if (command == 102) "0" else "1"
@@ -368,16 +384,23 @@ object SettingsHeadsetHook : HookContext() {
     private fun registerStatusReceiver(ctx: Context?) {
         if (ctx == null || receiverRegistered) return
         context = ctx.applicationContext ?: ctx
+        refreshMilinkSpatialAudioOption()
         loadState()
         val filter = IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED)
         }
-        context?.registerReceiver(object : BroadcastReceiver() {
+        val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
+                    OppoPodsAction.ACTION_MILINK_SPATIAL_AUDIO_OPTION_CHANGED -> {
+                        refreshMilinkSpatialAudioOption(intent)
+                        saveState(context)
+                        updateFragments()
+                    }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentName = intent.getStringExtra("device_name") ?: currentName
@@ -385,7 +408,7 @@ object SettingsHeadsetHook : HookContext() {
                     }
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
-                        currentBattery = intent.batteryStatusFromExtras() ?: intent.parcelableStatus() ?: currentBattery
+                        currentBattery = intent.batteryStatusCompat() ?: currentBattery
                         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
                         saveState(context)
                         updateBatteryViews()
@@ -399,9 +422,11 @@ object SettingsHeadsetHook : HookContext() {
                         updateFragments()
                     }
                 }
-                Log.d(TAG, "state action=${intent?.action} address=$currentAddress anc=$currentAnc battery=${settingsBatteryString()}")
+                Log.d(TAG, "state action=${intent?.action} address=$currentAddress anc=$currentAnc miLinkSpatialEnabled=$milinkSpatialAudioOptionEnabled battery=${settingsBatteryString()}")
             }
-        }, filter, Context.RECEIVER_EXPORTED)
+        }
+        context?.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        statusReceiver = receiver
         receiverRegistered = true
         requestBluetoothStatus("receiver-register")
         Log.d(TAG, "registered status receiver context=$context")
@@ -521,6 +546,16 @@ object SettingsHeadsetHook : HookContext() {
         return normalized == currentAddress?.uppercase() || normalized in knownOppoAddresses
     }
 
+    private fun refreshMilinkSpatialAudioOption(intent: Intent? = null) {
+        milinkSpatialAudioOptionEnabled = MilinkSpatialAudioOptionSettings.resolveAndCache(
+            context,
+            PREFS_NAME,
+            prefs,
+            ::reloadRemotePrefs,
+            intent
+        )
+    }
+
     private fun settingsBatteryString(): String {
         return settingsBatteryValues().joinToString(",")
     }
@@ -618,42 +653,13 @@ object SettingsHeadsetHook : HookContext() {
             ?: runCatching { getParcelableExtra<BluetoothDevice>(key) }.getOrNull()
     }
 
-    @Suppress("DEPRECATION")
-    private fun Intent.parcelableStatus(): BatteryParams? {
-        return runCatching { getParcelableExtra("status", BatteryParams::class.java) }.getOrNull()
-            ?: runCatching { getParcelableExtra<BatteryParams>("status") }.getOrNull()
-    }
-
-    private fun Intent.batteryStatusFromExtras(): BatteryParams? {
-        if (!hasExtra("left_connected") && !hasExtra("right_connected") && !hasExtra("case_connected")) return null
-        return BatteryParams(
-            left = PodParams(
-                getIntExtra("left_battery", 0),
-                getBooleanExtra("left_charging", false),
-                getBooleanExtra("left_connected", false),
-                0
-            ),
-            right = PodParams(
-                getIntExtra("right_battery", 0),
-                getBooleanExtra("right_charging", false),
-                getBooleanExtra("right_connected", false),
-                0
-            ),
-            case = PodParams(
-                getIntExtra("case_battery", 0),
-                getBooleanExtra("case_charging", false),
-                getBooleanExtra("case_connected", false),
-                0
-            )
-        )
-    }
-
     private fun saveState(ctx: Context?) {
         val prefs = (ctx ?: context)?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) ?: return
         prefs.edit()
             .putString("address", currentAddress)
             .putString("name", currentName)
             .putInt("anc", currentAnc)
+            .putBoolean(OppoPodsPrefsKey.MILINK_SPATIAL_AUDIO_OPTION_ENABLED, milinkSpatialAudioOptionEnabled)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)

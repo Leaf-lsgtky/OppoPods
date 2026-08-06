@@ -1,7 +1,9 @@
 package moe.chenxy.oppopods.ui
 
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,10 +45,12 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -57,12 +61,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.R
-import moe.chenxy.oppopods.pods.GameModeImplementation
+import moe.chenxy.oppopods.pods.CustomButtonFunction
+import moe.chenxy.oppopods.pods.CustomButtonPosition
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.ui.effect.BgEffectBackground
 import moe.chenxy.oppopods.ui.effect.ColorBlendToken
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import kotlinx.coroutines.flow.onEach
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -77,8 +83,8 @@ import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurBlendMode
 import top.yukonga.miuix.kmp.blur.BlurColors
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.isRenderEffectSupported
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
@@ -98,8 +104,6 @@ fun SettingsPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     themeMode: MutableState<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
-    adaptiveMode: MutableState<Boolean> = mutableStateOf(true),
-    onAdaptiveModeChange: (Boolean) -> Unit = {},
     showConnectionBatteryIsland: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND),
     onShowConnectionBatteryIslandChange: (Boolean) -> Unit = {},
@@ -110,7 +114,10 @@ fun SettingsPage(
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_NOTIFICATION_ISLAND_STYLE),
     onNotificationIslandStyleChange: (Boolean) -> Unit = {},
     onOpenAdvancedSettings: () -> Unit = {},
-    onOpenAbout: () -> Unit = {}
+    onOpenAbout: () -> Unit = {},
+    onOpenProfiles: () -> Unit = {},
+    debugMode: Boolean = false,
+    onOpenDebug: () -> Unit = {}
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -142,12 +149,6 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 SwitchPreference(
-                    title = stringResource(R.string.adaptive_mode),
-                    summary = stringResource(R.string.adaptive_mode_summary),
-                    checked = adaptiveMode.value,
-                    onCheckedChange = { onAdaptiveModeChange(it) }
-                )
-                SwitchPreference(
                     title = stringResource(R.string.show_connection_battery_island),
                     summary = stringResource(R.string.show_connection_battery_island_summary),
                     checked = showConnectionBatteryIsland.value,
@@ -172,6 +173,10 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 ArrowPreference(
+                    title = stringResource(R.string.device_profiles),
+                    onClick = onOpenProfiles
+                )
+                ArrowPreference(
                     title = stringResource(R.string.advanced_settings),
                     onClick = onOpenAdvancedSettings
                 )
@@ -179,6 +184,17 @@ fun SettingsPage(
                     title = stringResource(R.string.about),
                     onClick = onOpenAbout
                 )
+            }
+        }
+
+        if (debugMode) {
+            item {
+                Card(modifier = Modifier.padding(top = 12.dp)) {
+                    ArrowPreference(
+                        title = stringResource(R.string.debug_mode),
+                        onClick = onOpenDebug
+                    )
+                }
             }
         }
     }
@@ -192,22 +208,39 @@ fun AdvancedSettingsPage(
     onOpenHeyTapChange: (Boolean) -> Unit = {},
     rfcommConnectionMethod: MutableState<RfcommConnectionMethod> = mutableStateOf(RfcommConnectionMethod.UUID),
     onRfcommConnectionMethodChange: (RfcommConnectionMethod) -> Unit = {},
-    gameModeImplementation: MutableState<GameModeImplementation> = mutableStateOf(GameModeImplementation.STANDARD),
-    onGameModeImplementationChange: (GameModeImplementation) -> Unit = {},
+    adaptiveVisible: Boolean = true,
+    spatialAudioVisible: Boolean = false,
+    spatialSoundVisible: Boolean = false,
     showConnectionPopup: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_POPUP),
     onShowConnectionPopupChange: (Boolean) -> Unit = {},
     connectionPopupDismissSeconds: MutableState<Int> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS),
-    onConnectionPopupDismissSecondsChange: (Int) -> Unit = {}
+    onConnectionPopupDismissSecondsChange: (Int) -> Unit = {},
+    milinkSpatialAudioOptionEnabled: MutableState<Boolean> =
+        mutableStateOf(OppoPodsPrefsKey.DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED),
+    onMilinkSpatialAudioOptionEnabledChange: (Boolean) -> Unit = {},
+    customButtonFunction: MutableState<CustomButtonFunction> =
+        mutableStateOf(CustomButtonFunction.GAME_MODE),
+    onCustomButtonFunctionChange: (CustomButtonFunction) -> Unit = {},
+    customButtonPosition: MutableState<CustomButtonPosition> =
+        mutableStateOf(CustomButtonPosition.UPPER),
+    onCustomButtonPositionChange: (CustomButtonPosition) -> Unit = {}
 ) {
     val rfcommConnectionOptions = listOf(
         stringResource(R.string.rfcomm_connection_method_uuid),
         stringResource(R.string.rfcomm_connection_method_channel)
     )
-    val gameModeImplementationOptions = listOf(
-        stringResource(R.string.game_mode_implementation_standard),
-        stringResource(R.string.game_mode_implementation_compatible)
+    val customButtonFunctionOptions = mutableListOf(
+        stringResource(R.string.custom_button_function_none),
+        stringResource(R.string.custom_button_function_game_mode)
+    ).apply {
+        if (adaptiveVisible) add(stringResource(R.string.custom_button_function_adaptive))
+        if (spatialSoundVisible) add(stringResource(R.string.custom_button_function_spatial_sound))
+    }
+    val customButtonPositionOptions = listOf(
+        stringResource(R.string.custom_button_position_upper),
+        stringResource(R.string.custom_button_position_lower)
     )
     val popupDismissSecondOptions = OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECOND_OPTIONS
     val popupDismissSecondLabels = popupDismissSecondOptions.map {
@@ -231,19 +264,38 @@ fun AdvancedSettingsPage(
         item {
             Card {
                 OverlayDropdownPreference(
+                    title = stringResource(R.string.custom_button_function),
+                    items = customButtonFunctionOptions,
+                    selectedIndex = run {
+                        val enumIndex = CustomButtonFunction.selectedIndexOf(customButtonFunction.value)
+                        // Build list of visible enum indices in order
+                        val visibleIndices = mutableListOf(0, 1) // NONE, GAME_MODE always visible
+                        if (adaptiveVisible) visibleIndices.add(2) // ADAPTIVE
+                        if (spatialSoundVisible) visibleIndices.add(3) // SPATIAL_SOUND
+                        visibleIndices.indexOf(enumIndex).takeIf { it >= 0 } ?: 0
+                    },
+                    onSelectedIndexChange = { index ->
+                        val visibleIndices = mutableListOf(0, 1)
+                        if (adaptiveVisible) visibleIndices.add(2)
+                        if (spatialSoundVisible) visibleIndices.add(3)
+                        val enumIndex = visibleIndices.getOrElse(index) { index }
+                        onCustomButtonFunctionChange(CustomButtonFunction.fromSelectedIndex(enumIndex))
+                    }
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.custom_button_position),
+                    items = customButtonPositionOptions,
+                    selectedIndex = CustomButtonPosition.selectedIndexOf(customButtonPosition.value),
+                    onSelectedIndexChange = {
+                        onCustomButtonPositionChange(CustomButtonPosition.fromSelectedIndex(it))
+                    }
+                )
+                OverlayDropdownPreference(
                     title = stringResource(R.string.rfcomm_connection_method),
                     items = rfcommConnectionOptions,
                     selectedIndex = RfcommConnectionMethod.selectedIndexOf(rfcommConnectionMethod.value),
                     onSelectedIndexChange = {
                         onRfcommConnectionMethodChange(RfcommConnectionMethod.fromSelectedIndex(it))
-                    }
-                )
-                OverlayDropdownPreference(
-                    title = stringResource(R.string.game_mode_implementation),
-                    items = gameModeImplementationOptions,
-                    selectedIndex = GameModeImplementation.selectedIndexOf(gameModeImplementation.value),
-                    onSelectedIndexChange = {
-                        onGameModeImplementationChange(GameModeImplementation.fromSelectedIndex(it))
                     }
                 )
                 SwitchPreference(
@@ -267,6 +319,81 @@ fun AdvancedSettingsPage(
                     checked = openHeyTap.value,
                     onCheckedChange = { onOpenHeyTapChange(it) }
                 )
+                if (spatialAudioVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.milink_spatial_audio_option),
+                        checked = milinkSpatialAudioOptionEnabled.value,
+                        onCheckedChange = { onMilinkSpatialAudioOptionEnabledChange(it) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MoreSettingsPage(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    autoPlayPauseVisible: Boolean = false,
+    autoPlayPause: Boolean = false,
+    onAutoPlayPauseChange: (Boolean) -> Unit = {},
+    dualDeviceVisible: Boolean = false,
+    dualDevice: Boolean = false,
+    onDualDeviceChange: (Boolean) -> Unit = {},
+    connectedDevicesVisible: Boolean = false,
+    connectedDevices: List<moe.chenxy.oppopods.pods.ConnectedDevice> = emptyList(),
+    connectedDevicesReceived: Boolean = false
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize().scrollEndHaptic(),
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding() + 12.dp,
+            bottom = contentPadding.calculateBottomPadding() + 12.dp,
+            start = 12.dp,
+            end = 12.dp
+        ),
+        overscrollEffect = null,
+    ) {
+        item {
+            Card {
+                if (autoPlayPauseVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.auto_play_pause),
+                        summary = stringResource(R.string.auto_play_pause_summary),
+                        checked = autoPlayPause,
+                        onCheckedChange = onAutoPlayPauseChange
+                    )
+                }
+                if (dualDeviceVisible) {
+                    SwitchPreference(
+                        title = stringResource(R.string.dual_device),
+                        summary = stringResource(R.string.dual_device_summary),
+                        checked = dualDevice,
+                        onCheckedChange = onDualDeviceChange
+                    )
+                }
+                if (connectedDevicesVisible) {
+                    if (!connectedDevicesReceived) {
+                        // 等待耳机推送设备列表
+                    } else if (connectedDevices.isEmpty()) {
+                        BasicComponent(
+                            title = stringResource(R.string.dual_device_no_device)
+                        )
+                    } else {
+                        connectedDevices.forEach { device ->
+                            val statusText = when {
+                                device.active -> stringResource(R.string.dual_device_active)
+                                device.connected -> stringResource(R.string.dual_device_connected)
+                                else -> stringResource(R.string.dual_device_disconnected)
+                            }
+                            BasicComponent(
+                                title = device.name.ifEmpty { device.mac },
+                                summary = statusText
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -275,7 +402,9 @@ fun AdvancedSettingsPage(
 @Composable
 fun AboutPage(
     modifier: Modifier = Modifier,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    debugMode: Boolean = false,
+    onDebugModeChanged: (Boolean) -> Unit = {}
 ) {
     val topAppBarScrollBehavior = MiuixScrollBehavior()
     val lazyListState = rememberLazyListState()
@@ -337,7 +466,9 @@ fun AboutPage(
                 topAppBarScrollBehavior = topAppBarScrollBehavior,
                 lazyListState = lazyListState,
                 scrollProgress = scrollProgress,
-                onLogoHeightChanged = { logoHeightPx = it }
+                onLogoHeightChanged = { logoHeightPx = it },
+                debugMode = debugMode,
+                onDebugModeChanged = onDebugModeChanged
             )
         }
     }
@@ -351,10 +482,14 @@ private fun AboutContent(
     lazyListState: LazyListState,
     scrollProgress: Float,
     onLogoHeightChanged: (Int) -> Unit,
+    debugMode: Boolean = false,
+    onDebugModeChanged: (Boolean) -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
+    val context = LocalContext.current
+    var debugClickCount by remember { mutableIntStateOf(0) }
     val backdrop = rememberLayerBackdrop()
     val isDark = isSystemInDarkTheme()
     val blurEnabled = isRenderEffectSupported()
@@ -575,6 +710,32 @@ private fun AboutContent(
                                 scrollPadding.calculateTopPadding() +
                                 126.dp
                         )
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val iconSizePx = with(density) { 88.dp.toPx() }
+                                val iconTopPx = with(density) { (40.dp + 52.dp).toPx() }
+                                val spacerWidth = size.width.toFloat()
+                                val iconLeft = (spacerWidth - iconSizePx) / 2
+                                val iconRight = iconLeft + iconSizePx
+
+                                if (offset.x in iconLeft..iconRight && offset.y in iconTopPx..(iconTopPx + iconSizePx)) {
+                                    debugClickCount++
+                                    if (debugClickCount >= 5) {
+                                        debugClickCount = 0
+                                        val newState = !debugMode
+                                        onDebugModeChanged(newState)
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                if (newState) R.string.debug_mode_enabled
+                                                else R.string.debug_mode_disabled
+                                            ),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                        }
                         .onSizeChanged { size -> onLogoHeightChanged(size.height) }
                         .onGloballyPositioned { coordinates ->
                             val y = coordinates.positionInWindow().y
@@ -655,6 +816,10 @@ private fun AboutContent(
                         ArrowPreference(
                             title = stringResource(R.string.author_star_zero),
                             onClick = { uriHandler.openUri("https://www.coolapk.com/u/2380718") }
+                        )
+                        ArrowPreference(
+                            title = "Zhaoyi-ya",
+                            onClick = { uriHandler.openUri("https://github.com/Zhaoyi-ya") }
                         )
                     }
 

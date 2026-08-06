@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Handler
@@ -12,6 +13,8 @@ import android.os.Looper
 import android.util.Log
 import com.xzakota.hyper.notification.focus.FocusNotification
 import moe.chenxy.oppopods.R
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 
 @SuppressLint("WrongConstant", "MissingPermission", "NotificationPermission")
@@ -24,7 +27,10 @@ object FocusIslandUtil {
     private const val ISLAND_TIMEOUT_SECONDS = 3
     private const val DISMISS_DELAY_MS = 4000L
 
-    fun showBatteryIsland(context: Context, batteryParams: BatteryParams): Boolean {
+    fun showBatteryIsland(
+        context: Context,
+        batteryParams: BatteryParams
+    ): Boolean {
         try {
             val leftConnected = batteryParams.left?.isConnected == true
             val rightConnected = batteryParams.right?.isConnected == true
@@ -39,8 +45,14 @@ object FocusIslandUtil {
             val moduleContext = context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            val leftBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_left)
-            val rightBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_right)
+            // 优先用用户自定义的岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
+            // 内置资源按名字解析（而非编译期 R 常量），避免模块更新后资源 ID 移位取到错图。
+            val leftBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_LEFT)
+                ?: moduleContext.resources.getIdentifier("img_left", "drawable", MODULE_PACKAGE)
+                    .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
+            val rightBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_RIGHT)
+                ?: moduleContext.resources.getIdentifier("img_right", "drawable", MODULE_PACKAGE)
+                    .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
 
             if (leftBitmap == null || rightBitmap == null) {
                 Log.e(TAG, "Failed to decode earphone icon bitmaps")
@@ -128,5 +140,13 @@ object FocusIslandUtil {
             Log.e(TAG, "Failed to show Focus Island", e)
             return false
         }
+    }
+
+    /** 经 ContentProvider 读取用户自定义岛图（跨进程）；未设置则返回 null 由调用方回退内置资源。 */
+    private fun loadCustomBitmap(context: Context, slot: PodImageSlot): Bitmap? {
+        return runCatching {
+            context.contentResolver.openInputStream(PodImageStore.uri(slot))
+                ?.use { BitmapFactory.decodeStream(it) }
+        }.onFailure { Log.w(TAG, "loadCustomBitmap failed slot=${slot.key}", it) }.getOrNull()
     }
 }
