@@ -46,13 +46,12 @@ object FocusIslandUtil {
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
             // 优先用用户自定义的岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
-            // 内置资源按名字解析（而非编译期 R 常量），避免模块更新后资源 ID 移位取到错图。
+            // 使用编译期资源 ID。release 的 resopt 会重命名资源 entry，按字符串
+            // getIdentifier("img_left") 会得到 0；编译期引用会随资源表一起重写。
             val leftBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_LEFT)
-                ?: moduleContext.resources.getIdentifier("img_left", "drawable", MODULE_PACKAGE)
-                    .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
+                ?: BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_left)
             val rightBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_RIGHT)
-                ?: moduleContext.resources.getIdentifier("img_right", "drawable", MODULE_PACKAGE)
-                    .takeIf { it != 0 }?.let { BitmapFactory.decodeResource(moduleContext.resources, it) }
+                ?: BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_right)
 
             if (leftBitmap == null || rightBitmap == null) {
                 Log.e(TAG, "Failed to decode earphone icon bitmaps")

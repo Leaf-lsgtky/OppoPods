@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.graphics.drawable.Drawable
+import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.BuildConfig
 import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.CustomButtonPosition
@@ -1696,9 +1697,9 @@ object MiLinkServiceHook : HookContext() {
             val moduleContext = view.context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            val resId = moduleContext.resources.getIdentifier("ic_game_mode", "drawable", MODULE_PACKAGE)
-            if (resId == 0) return null
-            moduleContext.getDrawable(resId)?.also { gameModeIcon = it }
+            // 不能按字符串查模块资源：release 的 resopt 会重命名资源 entry，
+            // 同时 shrinkResources 也会移除仅由 getIdentifier 引用的图标。
+            moduleContext.getDrawable(R.drawable.ic_game_mode)?.also { gameModeIcon = it }
         }.onFailure { Log.w(TAG, "loadGameModeIcon failed", it) }.getOrNull()
     }
 
