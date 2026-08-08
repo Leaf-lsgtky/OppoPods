@@ -107,6 +107,9 @@ fun SettingsPage(
     showConnectionBatteryIsland: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND),
     onShowConnectionBatteryIslandChange: (Boolean) -> Unit = {},
+    temporaryBatteryIslandDurationSeconds: MutableState<Int> =
+        mutableStateOf(OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS),
+    onTemporaryBatteryIslandDurationSecondsChange: (Int) -> Unit = {},
     showConnectionNotification: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_NOTIFICATION),
     onShowConnectionNotificationChange: (Boolean) -> Unit = {},
@@ -124,6 +127,17 @@ fun SettingsPage(
         stringResource(R.string.theme_light),
         stringResource(R.string.theme_dark)
     )
+    val temporaryBatteryIslandDurationOptions =
+        OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECOND_OPTIONS
+    val temporaryBatteryIslandDurationLabels = temporaryBatteryIslandDurationOptions.map {
+        stringResource(R.string.temporary_battery_island_duration_seconds, it)
+    }
+    val temporaryBatteryIslandDurationSelectedIndex = temporaryBatteryIslandDurationOptions
+        .indexOf(temporaryBatteryIslandDurationSeconds.value)
+        .takeIf { it >= 0 }
+        ?: temporaryBatteryIslandDurationOptions.indexOf(
+            OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
+        )
 
     LazyColumn(
         modifier = modifier.fillMaxSize().scrollEndHaptic(),
@@ -153,6 +167,17 @@ fun SettingsPage(
                     summary = stringResource(R.string.show_connection_battery_island_summary),
                     checked = showConnectionBatteryIsland.value,
                     onCheckedChange = { onShowConnectionBatteryIslandChange(it) }
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.temporary_battery_island_duration),
+                    items = temporaryBatteryIslandDurationLabels,
+                    selectedIndex = temporaryBatteryIslandDurationSelectedIndex,
+                    onSelectedIndexChange = {
+                        onTemporaryBatteryIslandDurationSecondsChange(
+                            temporaryBatteryIslandDurationOptions[it]
+                        )
+                    },
+                    enabled = showConnectionBatteryIsland.value
                 )
                 SwitchPreference(
                     title = stringResource(R.string.show_connection_notification),
@@ -489,6 +514,8 @@ private fun AboutContent(
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
     val context = LocalContext.current
+    val debugModeEnabledText = stringResource(R.string.debug_mode_enabled)
+    val debugModeDisabledText = stringResource(R.string.debug_mode_disabled)
     var debugClickCount by remember { mutableIntStateOf(0) }
     val backdrop = rememberLayerBackdrop()
     val isDark = isSystemInDarkTheme()
@@ -726,10 +753,7 @@ private fun AboutContent(
                                         onDebugModeChanged(newState)
                                         Toast.makeText(
                                             context,
-                                            context.getString(
-                                                if (newState) R.string.debug_mode_enabled
-                                                else R.string.debug_mode_disabled
-                                            ),
+                                            if (newState) debugModeEnabledText else debugModeDisabledText,
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }

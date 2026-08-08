@@ -1,5 +1,6 @@
 package moe.chenxy.oppopods.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothDevice
@@ -7,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
@@ -27,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -42,6 +45,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
@@ -164,6 +168,16 @@ fun MainUI(
             )
         )
     }
+    val temporaryBatteryIslandDurationSeconds = remember {
+        mutableStateOf(
+            prefs.getInt(
+                OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
+                OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
+            ).takeIf {
+                it in OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECOND_OPTIONS
+            } ?: OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
+        )
+    }
     val showConnectionPopup = remember {
         mutableStateOf(
             prefs.getBoolean(
@@ -208,7 +222,7 @@ fun MainUI(
     BtLogStore.isEnabled = loggingEnabled.value
     val appController = remember { AppRfcommController() }
     // 收到 0x8103 后按 productId 在内嵌白名单里精确命中并重建配置（仅自动模式生效）。
-    remember(appController) {
+    SideEffect {
         appController.productIdResolver = { productId ->
             DeviceProfileStore.profileForProductId(context, prefs, productId)
                 ?.also { activeProfile.value = it }
@@ -592,8 +606,18 @@ fun MainUI(
 
     fun onDeviceSelected(device: BluetoothDevice) {
         // 按当前模式预解析（自动模式先用蓝牙名预判），连上后 0x8103 再精确校正。
+        val deviceName = if (
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            device.name
+        } else {
+            null
+        }
         val resolved = runCatching {
-            DeviceProfileStore.resolveProfile(context, prefs, device.name)
+            DeviceProfileStore.resolveProfile(context, prefs, deviceName)
         }.getOrElse { activeProfile.value }
         activeProfile.value = resolved
         appController.connect(
@@ -616,6 +640,7 @@ fun MainUI(
 
     fun broadcastNotificationSettings(
         showConnectionBatteryIslandEnabled: Boolean,
+        temporaryBatteryIslandDurationSecondsValue: Int,
         showConnectionPopupEnabled: Boolean,
         connectionPopupDismissSecondsValue: Int,
         showConnectionNotificationEnabled: Boolean,
@@ -623,6 +648,7 @@ fun MainUI(
     ) {
         val settings = NotificationSettings(
             showConnectionBatteryIsland = showConnectionBatteryIslandEnabled,
+            temporaryBatteryIslandDurationSeconds = temporaryBatteryIslandDurationSecondsValue,
             showConnectionPopup = showConnectionPopupEnabled,
             connectionPopupDismissSeconds = connectionPopupDismissSecondsValue,
             showConnectionNotification = showConnectionNotificationEnabled,
@@ -893,6 +919,22 @@ fun MainUI(
                             .commit()
                         broadcastNotificationSettings(
                             it,
+                            temporaryBatteryIslandDurationSeconds.value,
+                            showConnectionPopup.value,
+                            connectionPopupDismissSeconds.value,
+                            showConnectionNotification.value,
+                            notificationIslandStyle.value
+                        )
+                    },
+                    temporaryBatteryIslandDurationSeconds = temporaryBatteryIslandDurationSeconds,
+                    onTemporaryBatteryIslandDurationSecondsChange = {
+                        temporaryBatteryIslandDurationSeconds.value = it
+                        prefs.edit()
+                            .putInt(OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS, it)
+                            .commit()
+                        broadcastNotificationSettings(
+                            showConnectionBatteryIsland.value,
+                            it,
                             showConnectionPopup.value,
                             connectionPopupDismissSeconds.value,
                             showConnectionNotification.value,
@@ -907,6 +949,7 @@ fun MainUI(
                             .commit()
                         broadcastNotificationSettings(
                             showConnectionBatteryIsland.value,
+                            temporaryBatteryIslandDurationSeconds.value,
                             showConnectionPopup.value,
                             connectionPopupDismissSeconds.value,
                             it,
@@ -921,6 +964,7 @@ fun MainUI(
                             .commit()
                         broadcastNotificationSettings(
                             showConnectionBatteryIsland.value,
+                            temporaryBatteryIslandDurationSeconds.value,
                             showConnectionPopup.value,
                             connectionPopupDismissSeconds.value,
                             showConnectionNotification.value,
@@ -1022,6 +1066,7 @@ fun MainUI(
                             .commit()
                         broadcastNotificationSettings(
                             showConnectionBatteryIsland.value,
+                            temporaryBatteryIslandDurationSeconds.value,
                             it,
                             connectionPopupDismissSeconds.value,
                             showConnectionNotification.value,
@@ -1036,6 +1081,7 @@ fun MainUI(
                             .commit()
                         broadcastNotificationSettings(
                             showConnectionBatteryIsland.value,
+                            temporaryBatteryIslandDurationSeconds.value,
                             showConnectionPopup.value,
                             it,
                             showConnectionNotification.value,

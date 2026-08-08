@@ -16,6 +16,7 @@ import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.PodImageSlot
 import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
+import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 
 @SuppressLint("WrongConstant", "MissingPermission", "NotificationPermission")
 object FocusIslandUtil {
@@ -24,14 +25,16 @@ object FocusIslandUtil {
     private const val CHANNEL_NAME = "OppoPods Battery"
     private const val NOTIFICATION_ID = 10086
     private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
-    private const val ISLAND_TIMEOUT_SECONDS = 3
-    private const val DISMISS_DELAY_MS = 4000L
 
     fun showBatteryIsland(
         context: Context,
-        batteryParams: BatteryParams
+        batteryParams: BatteryParams,
+        durationSeconds: Int = OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
     ): Boolean {
         try {
+            val islandDurationSeconds = durationSeconds.takeIf {
+                it in OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECOND_OPTIONS
+            } ?: OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
             val leftConnected = batteryParams.left?.isConnected == true
             val rightConnected = batteryParams.right?.isConnected == true
 
@@ -71,11 +74,6 @@ object FocusIslandUtil {
                 }
             )
 
-            val contentParts = mutableListOf<String>()
-            if (leftConnected) contentParts.add("L: ${batteryParams.left!!.battery}%")
-            if (rightConnected) contentParts.add("R: ${batteryParams.right!!.battery}%")
-            val contentText = contentParts.joinToString("  ")
-
             val extras = FocusNotification.buildV3 {
                 val picLeft = createPicture("key_pic_left", leftIcon)
                 val picRight = createPicture("key_pic_right", rightIcon)
@@ -87,6 +85,7 @@ object FocusIslandUtil {
                 isShowNotification = false
                 island {
                     islandProperty = 1
+                    islandTimeout = islandDurationSeconds
                     bigIslandArea {
                         imageTextInfoLeft {
                             type = 1
@@ -111,18 +110,12 @@ object FocusIslandUtil {
                             }
                         }
                     }
-                    shareData {
-                        title = "OppoPods"
-                        content = contentText
-                        shareContent = contentText
-                    }
                 }
             } ?: return false
 
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .setContentTitle("OppoPods")
-                .setContentText(contentText)
                 .setTicker("OppoPods")
                 .addExtras(extras)
                 .build()
@@ -131,9 +124,12 @@ object FocusIslandUtil {
 
             Handler(Looper.getMainLooper()).postDelayed({
                 try { nm.cancel(NOTIFICATION_ID) } catch (_: Exception) {}
-            }, DISMISS_DELAY_MS)
+            }, islandDurationSeconds * 1000L)
 
-            Log.d(TAG, "Focus Island shown: L=$leftText% R=$rightText%")
+            Log.d(
+                TAG,
+                "Focus Island shown: L=$leftText% R=$rightText%, duration=${islandDurationSeconds}s"
+            )
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show Focus Island", e)

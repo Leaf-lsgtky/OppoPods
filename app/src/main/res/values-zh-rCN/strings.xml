@@ -121,6 +121,8 @@
     <string name="adaptive_mode_summary">为兼容耳机启用自适应降噪模式，关闭后将隐藏该选项并禁用相关音频处理</string>
     <string name="show_connection_battery_island">连接时弹出电量超级岛</string>
     <string name="show_connection_battery_island_summary">首次获取电量后临时显示左右耳电量</string>
+    <string name="temporary_battery_island_duration">临时电量岛显示时长</string>
+    <string name="temporary_battery_island_duration_seconds">%1$d 秒</string>
     <string name="show_connection_popup">连接时显示弹窗</string>
     <string name="show_connection_popup_summary">耳机连接后显示电量弹窗</string>
     <string name="connection_popup_dismiss_duration">弹窗自动关闭时间</string>

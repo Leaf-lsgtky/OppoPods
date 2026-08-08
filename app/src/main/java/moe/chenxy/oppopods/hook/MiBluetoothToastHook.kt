@@ -130,7 +130,7 @@ object MiBluetoothToastHook : HookContext() {
             cacheNotificationSettings(context, notificationSettings)
             Log.d(
                 "OppoPods",
-                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}, updatedAt=${notificationSettings.updatedAt}"
+                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, batteryIslandDuration=${notificationSettings.temporaryBatteryIslandDurationSeconds}s, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}, updatedAt=${notificationSettings.updatedAt}"
             )
         }
 
@@ -385,7 +385,8 @@ object MiBluetoothToastHook : HookContext() {
                                 ) ?: return
                                 FocusIslandUtil.showBatteryIsland(
                                     context,
-                                    batteryParams
+                                    batteryParams,
+                                    settings.temporaryBatteryIslandDurationSeconds
                                 )
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)

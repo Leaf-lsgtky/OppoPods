@@ -18,7 +18,13 @@ abstract class HookContext {
     /** Releases resources retained by target-process objects before API 102 hot reload. */
     open fun onHotReloading() = Unit
 
-    fun hookIds(): Set<String> = hookHandles.mapNotNullTo(linkedSetOf()) { it.id }
+    fun hookIds(): Set<String> {
+        return if (module.getApiVersion() >= XposedInterface.API_102) {
+            hookHandles.mapNotNullTo(linkedSetOf()) { it.id }
+        } else {
+            emptySet()
+        }
+    }
 
     fun findClass(name: String): Class<*> = Class.forName(name, false, appClassLoader)
 
@@ -62,7 +68,11 @@ abstract class HookContext {
         hooker: XposedInterface.Hooker
     ) {
         val id = "$phase:${executable.toGenericString()}"
-        hookHandles += module.hook(executable).setId(id).intercept(hooker)
+        val builder = module.hook(executable)
+        if (module.getApiVersion() >= XposedInterface.API_102) {
+            builder.setId(id)
+        }
+        hookHandles += builder.intercept(hooker)
     }
 
     fun reloadRemotePrefs() {

@@ -120,6 +120,8 @@
     <string name="adaptive_mode_summary">Enable Adaptive noise control mode for compatible earphones</string>
     <string name="show_connection_battery_island">Show battery island on connect</string>
     <string name="show_connection_battery_island_summary">Briefly show left and right ear battery in Focus Island after connection</string>
+    <string name="temporary_battery_island_duration">Temporary battery island duration</string>
+    <string name="temporary_battery_island_duration_seconds">%1$d s</string>
     <string name="show_connection_popup">Show popup on connect</string>
     <string name="show_connection_popup_summary">Show the connection battery popup after the earphones connect</string>
     <string name="connection_popup_dismiss_duration">Popup auto-dismiss time</string>
