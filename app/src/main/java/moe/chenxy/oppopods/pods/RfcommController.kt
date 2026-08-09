@@ -298,7 +298,7 @@ object RfcommController {
         context?.let { cacheNotificationSettings(it, settings) }
         Log.d(
             TAG,
-            "Notification settings synced: batteryIsland=$showConnectionBatteryIslandEnabled, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled, updatedAt=${notificationSettings.updatedAt}"
+            "Notification settings synced: batteryIsland=$showConnectionBatteryIslandEnabled, batteryIslandDuration=${notificationSettings.temporaryBatteryIslandDurationSeconds}s, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled, updatedAt=${notificationSettings.updatedAt}"
         )
         if (refreshNotification) {
             refreshPodsNotification()
@@ -508,7 +508,8 @@ object RfcommController {
                 MiuiStrongToastUtil.showPodsBatteryToastByMiuiBt(
                     context,
                     batteryParams,
-                    notificationSettings
+                    notificationSettings,
+                    mDevice
                 )
             }
             if (showConnectionPopupEnabled) {
@@ -610,7 +611,7 @@ object RfcommController {
         )
         Log.d(
             TAG,
-            "Notification settings initial: batteryIsland=$showConnectionBatteryIslandEnabled, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled"
+            "Notification settings initial: batteryIsland=$showConnectionBatteryIslandEnabled, batteryIslandDuration=${notificationSettings.temporaryBatteryIslandDurationSeconds}s, popup=$showConnectionPopupEnabled, popupDismiss=${connectionPopupDismissSeconds}s, show=$showConnectionNotificationEnabled, island=$notificationIslandStyleEnabled"
         )
         Log.d(TAG, "RFCOMM connection method initial: ${rfcommConnectionMethod.preferenceValue}")
 

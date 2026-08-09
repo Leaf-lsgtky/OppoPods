@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 
 data class NotificationSettings(
     val showConnectionBatteryIsland: Boolean = OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND,
+    val temporaryBatteryIslandDurationSeconds: Int =
+        OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
     val showConnectionPopup: Boolean = OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_POPUP,
     val connectionPopupDismissSeconds: Int = OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS,
     val showConnectionNotification: Boolean = OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_NOTIFICATION,
@@ -16,6 +18,10 @@ data class NotificationSettings(
 
     fun putExtras(intent: Intent) {
         intent.putExtra(OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND, showConnectionBatteryIsland)
+        intent.putExtra(
+            OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
+            temporaryBatteryIslandDurationSeconds
+        )
         intent.putExtra(OppoPodsPrefsKey.SHOW_CONNECTION_POPUP, showConnectionPopup)
         intent.putExtra(OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS, connectionPopupDismissSeconds)
         intent.putExtra(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, showConnectionNotification)
@@ -26,6 +32,10 @@ data class NotificationSettings(
     fun writeToPrefs(prefs: SharedPreferences, commit: Boolean = false): Boolean {
         val editor = prefs.edit()
         editor.putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND, showConnectionBatteryIsland)
+        editor.putInt(
+            OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
+            temporaryBatteryIslandDurationSeconds
+        )
         editor.putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_POPUP, showConnectionPopup)
         editor.putInt(OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS, connectionPopupDismissSeconds)
         editor.putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, showConnectionNotification)
@@ -46,6 +56,7 @@ data class NotificationSettings(
     companion object {
         private val PREF_KEYS = listOf(
             OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND,
+            OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
             OppoPodsPrefsKey.SHOW_CONNECTION_POPUP,
             OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS,
             OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION,
@@ -59,6 +70,10 @@ data class NotificationSettings(
                     OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND,
                     OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND
                 ),
+                temporaryBatteryIslandDurationSeconds = prefs.getInt(
+                    OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
+                    OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
+                ).normalizedTemporaryBatteryIslandDurationSeconds(),
                 showConnectionPopup = prefs.getBoolean(
                     OppoPodsPrefsKey.SHOW_CONNECTION_POPUP,
                     OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_POPUP
@@ -90,6 +105,10 @@ data class NotificationSettings(
                     OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND,
                     fallback.showConnectionBatteryIsland
                 ),
+                temporaryBatteryIslandDurationSeconds = intent.getIntExtra(
+                    OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS,
+                    fallback.temporaryBatteryIslandDurationSeconds
+                ).normalizedTemporaryBatteryIslandDurationSeconds(),
                 showConnectionPopup = intent.getBooleanExtra(
                     OppoPodsPrefsKey.SHOW_CONNECTION_POPUP,
                     fallback.showConnectionPopup
@@ -122,6 +141,14 @@ data class NotificationSettings(
                 this
             } else {
                 OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS
+            }
+        }
+
+        private fun Int.normalizedTemporaryBatteryIslandDurationSeconds(): Int {
+            return if (this in OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECOND_OPTIONS) {
+                this
+            } else {
+                OppoPodsPrefsKey.DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS
             }
         }
     }

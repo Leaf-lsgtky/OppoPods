@@ -4,6 +4,7 @@ object OppoPodsPrefsKey {
     const val EAR_DETECTION = "ear_detection"
     const val EAR_DETECTION_SWITCH_SPEAKER = "ear_detection_switch_speaker"
     const val SHOW_CONNECTION_BATTERY_ISLAND = "show_connection_battery_island"
+    const val TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS = "temporary_battery_island_duration_seconds"
     const val SHOW_CONNECTION_POPUP = "show_connection_popup"
     const val CONNECTION_POPUP_DISMISS_SECONDS = "connection_popup_dismiss_seconds"
     const val SHOW_CONNECTION_NOTIFICATION = "show_connection_notification"
@@ -17,6 +18,8 @@ object OppoPodsPrefsKey {
     const val SELECTED_MODEL_ID = "selected_model_id"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true
+    const val DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS = 4
+    val TEMPORARY_BATTERY_ISLAND_DURATION_SECOND_OPTIONS = listOf(1, 3, 4, 5, 10)
     const val DEFAULT_SHOW_CONNECTION_POPUP = false
     const val DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS = 8
     val CONNECTION_POPUP_DISMISS_SECOND_OPTIONS = listOf(3, 5, 8, 10, 15, 30)

@@ -130,7 +130,7 @@ object MiBluetoothToastHook : HookContext() {
             cacheNotificationSettings(context, notificationSettings)
             Log.d(
                 "OppoPods",
-                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}, updatedAt=${notificationSettings.updatedAt}"
+                "Notification settings synced in MiBluetooth: batteryIsland=${notificationSettings.showConnectionBatteryIsland}, batteryIslandDuration=${notificationSettings.temporaryBatteryIslandDurationSeconds}s, popup=${notificationSettings.showConnectionPopup}, popupDismiss=${notificationSettings.connectionPopupDismissSeconds}s, show=${notificationSettings.showConnectionNotification}, island=${notificationSettings.notificationIslandStyle}, updatedAt=${notificationSettings.updatedAt}"
             )
         }
 
@@ -221,10 +221,10 @@ object MiBluetoothToastHook : HookContext() {
                 val moduleContext = context.createPackageContext(
                     "moe.chenxy.oppopods", Context.CONTEXT_IGNORE_SECURITY
                 )
-                // 按名字解析资源 ID，避免模块更新后资源 ID 移位导致跨进程取到错图
-                val boxId = moduleContext.resources.getIdentifier("img_box", "drawable", "moe.chenxy.oppopods")
                 val headsetIcon = Icon.createWithBitmap(
-                    BitmapFactory.decodeResource(moduleContext.resources, boxId)
+                    // 模块自身资源必须使用编译期 ID；release 的 resopt 会重命名
+                    // entry，getIdentifier("img_box") 无法再找到它。
+                    BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_box)
                 )
                 val pendingIntent = PendingIntent.getActivity(
                     context,
@@ -383,9 +383,12 @@ object MiBluetoothToastHook : HookContext() {
                                     "batteryParams",
                                     BatteryParams::class.java
                                 ) ?: return
+                                val deviceName = p1.getStringExtra("deviceName")
                                 FocusIslandUtil.showBatteryIsland(
                                     context,
-                                    batteryParams
+                                    batteryParams,
+                                    settings.temporaryBatteryIslandDurationSeconds,
+                                    deviceName
                                 )
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)
