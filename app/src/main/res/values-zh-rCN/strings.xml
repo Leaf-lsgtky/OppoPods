@@ -123,6 +123,8 @@
     <string name="show_connection_battery_island_summary">首次获取电量后临时显示左右耳电量</string>
     <string name="temporary_battery_island_duration">临时电量岛显示时长</string>
     <string name="temporary_battery_island_duration_seconds">%1$d 秒</string>
+    <string name="battery_island_case_title">耳机盒：%1$s</string>
+    <string name="battery_island_ear_summary">左：%1$s 右：%2$s</string>
     <string name="show_connection_popup">连接时显示弹窗</string>
     <string name="show_connection_popup_summary">耳机连接后显示电量弹窗</string>
     <string name="connection_popup_dismiss_duration">弹窗自动关闭时间</string>

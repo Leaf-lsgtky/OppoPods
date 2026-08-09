@@ -383,10 +383,12 @@ object MiBluetoothToastHook : HookContext() {
                                     "batteryParams",
                                     BatteryParams::class.java
                                 ) ?: return
+                                val deviceName = p1.getStringExtra("deviceName")
                                 FocusIslandUtil.showBatteryIsland(
                                     context,
                                     batteryParams,
-                                    settings.temporaryBatteryIslandDurationSeconds
+                                    settings.temporaryBatteryIslandDurationSeconds,
+                                    deviceName
                                 )
                             } else if (p1?.action == "chen.action.oppopods.updatepodsnotification") {
                                 val batteryParams = p1.getParcelableExtra("batteryParams", BatteryParams::class.java)
