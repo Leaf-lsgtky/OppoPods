@@ -54,6 +54,7 @@ object MiLinkServiceHook : HookContext() {
     private const val AUDIO_EFFECT_CARD_VIEW_ID = "audio_effect_card"
     private const val CUSTOM_BUTTON_CLICK_THROTTLE_MS = 300L
     private const val MODULE_PACKAGE = "moe.chenxy.oppopods"
+    private val bluetoothAddressPattern = Regex("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
     private val knownOppoAddresses = linkedSetOf<String>()
     private var context: Context? = null
     private var receiverRegistered = false
@@ -787,6 +788,18 @@ object MiLinkServiceHook : HookContext() {
         if (addresses.any(::isOppoAddress)) return true
         if (addresses.any { address -> address.equals(lastHeadsetDevice?.address, ignoreCase = true) }) return true
 
+        // On a clean install the MiLink process can build HeadsetDeviceInfo before the
+        // Bluetooth/RFCOMM hook has published the real address. The device id is then either
+        // our compatibility id or the real Bluetooth address, both of which are sufficient
+        // identity signals here. Without this fallback the type-1 card is skipped until the
+        // user reconnects the earbuds once.
+        if (addresses.any { it.equals(FAKE_DEVICE_ID, ignoreCase = true) }) return true
+        addresses.firstOrNull { bluetoothAddressPattern.matches(it) }?.let { address ->
+            knownOppoAddresses.add(address.uppercase())
+            currentAddress = address
+            return true
+        }
+
         val name = readStringMembers(deviceInfo, listOf("name", "deviceName")).firstOrNull().orEmpty()
         if (!name.contains("oppo", ignoreCase = true)) return false
         addresses.firstOrNull()?.let { address ->
@@ -1375,7 +1388,7 @@ object MiLinkServiceHook : HookContext() {
         )
     }
 
-    // 解析自定义按钮功能：intent extra > 本地缓存 > 远程 prefs（默认 GAME_MODE）
+    // 解析自定义按钮功能：intent extra > 远程 prefs > 本地缓存（默认 GAME_MODE）。
     private fun refreshCustomButtonFunction(intent: Intent? = null) {
         val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val cached = localPrefs
@@ -1386,16 +1399,18 @@ object MiLinkServiceHook : HookContext() {
             CustomButtonFunction.fromPreference(intent.getStringExtra(CustomButtonFunction.PREF_KEY))
         } else {
             reloadRemotePrefs()
-            runCatching {
-                CustomButtonFunction.fromPreference(prefs.getString(CustomButtonFunction.PREF_KEY, null))
-            }.getOrDefault(cached ?: CustomButtonFunction.GAME_MODE)
+            val remote = runCatching {
+                prefs.getString(CustomButtonFunction.PREF_KEY, null)
+                    ?.let(CustomButtonFunction::fromPreference)
+            }.getOrNull()
+            remote ?: cached ?: CustomButtonFunction.GAME_MODE
         }
         localPrefs?.edit()
             ?.putString(CustomButtonFunction.PREF_KEY, customButtonFunction.preferenceValue)
             ?.apply()
     }
 
-    // 解析自定义按钮位置：intent extra > 本地缓存 > 远程 prefs（默认 UPPER）。
+    // 解析自定义按钮位置：intent extra > 远程 prefs > 本地缓存（默认 UPPER）。
     private fun refreshCustomButtonPosition(intent: Intent? = null) {
         val localPrefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val cached = localPrefs
@@ -1406,9 +1421,11 @@ object MiLinkServiceHook : HookContext() {
             CustomButtonPosition.fromPreference(intent.getStringExtra(CustomButtonPosition.PREF_KEY))
         } else {
             reloadRemotePrefs()
-            runCatching {
-                CustomButtonPosition.fromPreference(prefs.getString(CustomButtonPosition.PREF_KEY, null))
-            }.getOrDefault(cached ?: CustomButtonPosition.UPPER)
+            val remote = runCatching {
+                prefs.getString(CustomButtonPosition.PREF_KEY, null)
+                    ?.let(CustomButtonPosition::fromPreference)
+            }.getOrNull()
+            remote ?: cached ?: CustomButtonPosition.UPPER
         }
         localPrefs?.edit()
             ?.putString(CustomButtonPosition.PREF_KEY, customButtonPosition.preferenceValue)
