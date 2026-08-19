@@ -590,6 +590,12 @@ object RfcommController {
     }
 
     fun connectPod(context: Context, device: BluetoothDevice, prefs: SharedPreferences) {
+        if (isPodConnected && ::mDevice.isInitialized &&
+            mDevice.address.equals(device.address, ignoreCase = true)
+        ) {
+            Log.d(TAG, "Skip duplicate pod initialization: ${device.address}")
+            return
+        }
         mContext = context
         mDevice = device
         mPrefs = prefs

@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import com.xzakota.hyper.notification.focus.FocusNotification
 import moe.chenxy.oppopods.pods.DeviceProfileStore
@@ -361,10 +362,9 @@ object MiBluetoothToastHook : HookContext() {
             }
         }
 
-
-        hookConstructorAfter(findConstructorByParamCount("com.android.bluetooth.ble.app.MiuiBluetoothNotification", 2)) {
+        fun initializeNotificationReceiver(instance: Any?) {
             val context = getObjectField(instance, "mContext") as Context
-            if (notificationReceiver != null) return@hookConstructorAfter
+            if (notificationReceiver != null) return
             notificationSettings = loadNotificationSettings(context)
             cacheNotificationSettings(context, notificationSettings)
             if (!notificationSettings.showConnectionNotification) {
@@ -468,6 +468,47 @@ object MiBluetoothToastHook : HookContext() {
                         Context.RECEIVER_EXPORTED)
                     notificationReceiver = broadcastReceiver
                     notificationReceiverContext = context.applicationContext ?: context
+        }
+
+        fun hookNotificationConstructor(vararg parameterTypes: Class<*>) {
+            runCatching {
+                hookConstructorAfter(
+                    findConstructor(
+                        "com.android.bluetooth.ble.app.MiuiBluetoothNotification",
+                        *parameterTypes
+                    )
+                ) {
+                    initializeNotificationReceiver(instance)
+                }
+            }.onSuccess {
+                Log.d(
+                    "OppoPods",
+                    "Hooked MiuiBluetoothNotification constructor(${parameterTypes.joinToString { it.name }})"
+                )
+            }.onFailure {
+                Log.w(
+                    "OppoPods",
+                    "MiuiBluetoothNotification constructor(${parameterTypes.joinToString { it.name }}) not available",
+                    it
+                )
+            }
+        }
+
+        // A17 has both (Context, Looper) and (Looper, BluetoothHeadsetService).
+        // The active one depends on mibt_memory_trim, so match complete signatures
+        // instead of relying on the unstable order of getDeclaredConstructors().
+        hookNotificationConstructor(Context::class.java, Looper::class.java)
+        runCatching {
+            hookNotificationConstructor(
+                Looper::class.java,
+                findClass("com.android.bluetooth.ble.app.headset.BluetoothHeadsetService")
+            )
+        }.onFailure {
+            Log.w(
+                "OppoPods",
+                "BluetoothHeadsetService class not available for notification constructor hook",
+                it
+            )
         }
     }
 
