@@ -136,6 +136,8 @@
     <string name="show_connection_notification_summary">耳机连接后显示电量通知</string>
     <string name="notification_island_style">将通知显示为超级岛样式</string>
     <string name="notification_island_style_summary">使用 HyperOS 焦点通知/超级岛样式展示连接通知</string>
+    <string name="show_headset_status_bar_icon">在状态栏显示耳机图标</string>
+    <string name="show_headset_status_bar_icon_summary">耳机连接期间保持状态栏的无线耳机图标常驻</string>
     <string name="notification_btn_disconnect">断开连接</string>
     <string name="more_settings">更多设置</string>
     <string name="noise_level_title">降噪深度</string>

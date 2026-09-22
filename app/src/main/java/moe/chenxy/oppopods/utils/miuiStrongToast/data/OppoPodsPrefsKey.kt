@@ -9,6 +9,7 @@ object OppoPodsPrefsKey {
     const val CONNECTION_POPUP_DISMISS_SECONDS = "connection_popup_dismiss_seconds"
     const val SHOW_CONNECTION_NOTIFICATION = "show_connection_notification"
     const val NOTIFICATION_ISLAND_STYLE = "notification_island_style"
+    const val SHOW_HEADSET_STATUS_BAR_ICON = "show_headset_status_bar_icon"
     const val NOTIFICATION_SETTINGS_UPDATED_AT = "notification_settings_updated_at"
     const val NOTIFICATION_SETTINGS_CACHE_PREFS_NAME = "oppopods_notification_settings_cache"
     const val MILINK_SPATIAL_AUDIO_OPTION_ENABLED = "milink_spatial_audio_option_enabled"
@@ -25,5 +26,6 @@ object OppoPodsPrefsKey {
     val CONNECTION_POPUP_DISMISS_SECOND_OPTIONS = listOf(3, 5, 8, 10, 15, 30)
     const val DEFAULT_SHOW_CONNECTION_NOTIFICATION = true
     const val DEFAULT_NOTIFICATION_ISLAND_STYLE = false
+    const val DEFAULT_SHOW_HEADSET_STATUS_BAR_ICON = true
     const val DEFAULT_MILINK_SPATIAL_AUDIO_OPTION_ENABLED = true
 }

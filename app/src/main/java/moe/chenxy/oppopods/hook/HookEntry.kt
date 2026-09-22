@@ -10,17 +10,18 @@ import io.github.libxposed.api.XposedModuleInterface.HotReloadingParam
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 
 class HookEntry : XposedModule() {
-    private var activeHook: HookContext? = null
+    private val activeHooks = mutableListOf<HookContext>()
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onPackageLoaded(param: PackageLoadedParam) {
         if (!param.isFirstPackage) return
 
-        loadHookForPackage(param.packageName, param.defaultClassLoader)
+        loadHooksForPackage(param.packageName, param.defaultClassLoader)
     }
 
     override fun onHotReloading(param: HotReloadingParam): Boolean {
-        activeHook?.onHotReloading()
+        activeHooks.forEach { it.onHotReloading() }
+        activeHooks.clear()
         detach()
         return true
     }
@@ -37,28 +38,28 @@ class HookEntry : XposedModule() {
         // module update silently drops every hook in secondary processes.
         val packageName = param.processName.substringBefore(':')
         Log.d(TAG, "Hot reload package=$packageName process=${param.processName}")
-        loadHookForPackage(packageName, classLoader)
-        val activeIds = activeHook?.hookIds().orEmpty()
+        loadHooksForPackage(packageName, classLoader)
+        val activeIds = activeHooks.flatMap { it.hookIds() }
         oldHooks.filter { it.id !in activeIds }.forEach(HookHandle::unhook)
     }
 
-    private fun loadHookForPackage(packageName: String, classLoader: ClassLoader) {
-        val hook = when (packageName) {
-            "com.android.bluetooth" -> HeadsetStateDispatcher
-            "com.milink.service" -> MiLinkServiceHook
-            "com.xiaomi.bluetooth" -> MiBluetoothToastHook
-            "com.android.settings" -> SettingsHeadsetHook
+    private fun loadHooksForPackage(packageName: String, classLoader: ClassLoader) {
+        val hooks = when (packageName) {
+            "com.android.bluetooth" -> listOf(HeadsetStateDispatcher)
+            "com.milink.service" -> listOf(MiLinkServiceHook)
+            "com.xiaomi.bluetooth" -> listOf(MiBluetoothToastHook, XiaomiBluetoothHeadsetIconGuard)
+            "com.android.settings" -> listOf(SettingsDetailsHook)
             else -> return
         }
-        loadHook(hook, classLoader)
+        hooks.forEach { loadHook(it, classLoader) }
     }
 
     private fun loadHook(hook: HookContext, classLoader: ClassLoader) {
         hook.module = this
         hook.appClassLoader = classLoader
         hook.prefs = getRemotePreferences("oppopods_settings")
+        activeHooks.add(hook)
         hook.onHook()
-        activeHook = hook
     }
 
     private companion object {

@@ -116,6 +116,9 @@ fun SettingsPage(
     notificationIslandStyle: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_NOTIFICATION_ISLAND_STYLE),
     onNotificationIslandStyleChange: (Boolean) -> Unit = {},
+    showHeadsetStatusBarIcon: MutableState<Boolean> =
+        mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_HEADSET_STATUS_BAR_ICON),
+    onShowHeadsetStatusBarIconChange: (Boolean) -> Unit = {},
     onOpenAdvancedSettings: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     onOpenProfiles: () -> Unit = {},
@@ -191,6 +194,12 @@ fun SettingsPage(
                     checked = notificationIslandStyle.value,
                     onCheckedChange = { onNotificationIslandStyleChange(it) },
                     enabled = showConnectionNotification.value
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.show_headset_status_bar_icon),
+                    summary = stringResource(R.string.show_headset_status_bar_icon_summary),
+                    checked = showHeadsetStatusBarIcon.value,
+                    onCheckedChange = { onShowHeadsetStatusBarIconChange(it) }
                 )
             }
         }

@@ -135,6 +135,8 @@
     <string name="show_connection_notification_summary">Show the headset battery notification after the earphones connect</string>
     <string name="notification_island_style">Show notification as Super Island</string>
     <string name="notification_island_style_summary">Use HyperOS Focus Island style for the connection notification</string>
+    <string name="show_headset_status_bar_icon">Show headset icon in status bar</string>
+    <string name="show_headset_status_bar_icon_summary">Keep the wireless headset icon in the status bar while the earphones are connected</string>
     <string name="notification_btn_disconnect">Disconnect</string>
     <string name="more_settings">More settings</string>
     <string name="noise_level_title">Noise cancellation depth</string>
