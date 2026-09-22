@@ -211,6 +211,14 @@ fun MainUI(
             )
         )
     }
+    val showHeadsetStatusBarIcon = remember {
+        mutableStateOf(
+            prefs.getBoolean(
+                OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON,
+                OppoPodsPrefsKey.DEFAULT_SHOW_HEADSET_STATUS_BAR_ICON
+            )
+        )
+    }
 
     // Hook 连接路径不会经过 onDeviceSelected；先按当前配置模式解析一次，连接广播
     // 到达后再按实际蓝牙名称刷新，避免旧的持久化种子配置残留可见性开关。
@@ -653,6 +661,7 @@ fun MainUI(
             connectionPopupDismissSeconds = connectionPopupDismissSecondsValue,
             showConnectionNotification = showConnectionNotificationEnabled,
             notificationIslandStyle = notificationIslandStyleEnabled,
+            showHeadsetStatusBarIcon = showHeadsetStatusBarIcon.value,
             updatedAt = System.currentTimeMillis()
         )
         settings.writeToPrefs(prefs, commit = true)
@@ -969,6 +978,21 @@ fun MainUI(
                             connectionPopupDismissSeconds.value,
                             showConnectionNotification.value,
                             it
+                        )
+                    },
+                    showHeadsetStatusBarIcon = showHeadsetStatusBarIcon,
+                    onShowHeadsetStatusBarIconChange = {
+                        showHeadsetStatusBarIcon.value = it
+                        prefs.edit()
+                            .putBoolean(OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON, it)
+                            .commit()
+                        broadcastNotificationSettings(
+                            showConnectionBatteryIsland.value,
+                            temporaryBatteryIslandDurationSeconds.value,
+                            showConnectionPopup.value,
+                            connectionPopupDismissSeconds.value,
+                            showConnectionNotification.value,
+                            notificationIslandStyle.value
                         )
                     },
                     onOpenAdvancedSettings = { backStack.add(Screen.AdvancedSettings) },

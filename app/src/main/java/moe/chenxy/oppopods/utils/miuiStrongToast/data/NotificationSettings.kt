@@ -11,6 +11,7 @@ data class NotificationSettings(
     val connectionPopupDismissSeconds: Int = OppoPodsPrefsKey.DEFAULT_CONNECTION_POPUP_DISMISS_SECONDS,
     val showConnectionNotification: Boolean = OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_NOTIFICATION,
     val notificationIslandStyle: Boolean = OppoPodsPrefsKey.DEFAULT_NOTIFICATION_ISLAND_STYLE,
+    val showHeadsetStatusBarIcon: Boolean = OppoPodsPrefsKey.DEFAULT_SHOW_HEADSET_STATUS_BAR_ICON,
     val updatedAt: Long = 0L
 ) {
     val showNotificationAsIsland: Boolean
@@ -26,6 +27,7 @@ data class NotificationSettings(
         intent.putExtra(OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS, connectionPopupDismissSeconds)
         intent.putExtra(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, showConnectionNotification)
         intent.putExtra(OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE, notificationIslandStyle)
+        intent.putExtra(OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON, showHeadsetStatusBarIcon)
         intent.putExtra(OppoPodsPrefsKey.NOTIFICATION_SETTINGS_UPDATED_AT, updatedAt)
     }
 
@@ -40,6 +42,7 @@ data class NotificationSettings(
         editor.putInt(OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS, connectionPopupDismissSeconds)
         editor.putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, showConnectionNotification)
         editor.putBoolean(OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE, notificationIslandStyle)
+        editor.putBoolean(OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON, showHeadsetStatusBarIcon)
         editor.putLong(OppoPodsPrefsKey.NOTIFICATION_SETTINGS_UPDATED_AT, updatedAt)
         return if (commit) {
             editor.commit()
@@ -61,6 +64,7 @@ data class NotificationSettings(
             OppoPodsPrefsKey.CONNECTION_POPUP_DISMISS_SECONDS,
             OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION,
             OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE,
+            OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON,
             OppoPodsPrefsKey.NOTIFICATION_SETTINGS_UPDATED_AT
         )
 
@@ -89,6 +93,10 @@ data class NotificationSettings(
                 notificationIslandStyle = prefs.getBoolean(
                     OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE,
                     OppoPodsPrefsKey.DEFAULT_NOTIFICATION_ISLAND_STYLE
+                ),
+                showHeadsetStatusBarIcon = prefs.getBoolean(
+                    OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON,
+                    OppoPodsPrefsKey.DEFAULT_SHOW_HEADSET_STATUS_BAR_ICON
                 ),
                 updatedAt = prefs.getLong(OppoPodsPrefsKey.NOTIFICATION_SETTINGS_UPDATED_AT, 0L)
             )
@@ -124,6 +132,10 @@ data class NotificationSettings(
                 notificationIslandStyle = intent.getBooleanExtra(
                     OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE,
                     fallback.notificationIslandStyle
+                ),
+                showHeadsetStatusBarIcon = intent.getBooleanExtra(
+                    OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON,
+                    fallback.showHeadsetStatusBarIcon
                 ),
                 updatedAt = intent.getLongExtra(
                     OppoPodsPrefsKey.NOTIFICATION_SETTINGS_UPDATED_AT,
