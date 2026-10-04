@@ -64,6 +64,51 @@ object HeadsetStateDispatcher : HookContext() {
             }
         }
 
+        // LC3 稳态下 HyperOS 会把 A2DP/HFP 拆掉，只挂上面那个 A2DP 回调就永远等不到
+        // connectPod，电量与降噪全部失效。这里补一条 LE Audio 入口：连上后把带 BR/EDR 的
+        // 那只设备交给 RFCOMM 控制器，由它另开一条 SPP —— 与 HeyMelody 在 ColorOS 上靠
+        // persist.sys.oplus.bt.le_audio_over_spp 强拉 SPP 是同一种做法。
+        runCatching {
+            hookAfter(
+                findMethod(
+                    "com.android.bluetooth.le_audio.LeAudioService",
+                    "deviceConnected",
+                    BluetoothDevice::class.java,
+                )
+            ) {
+                val device = args[0] as? BluetoothDevice ?: return@hookAfter
+                val context = instance as? ContextWrapper ?: return@hookAfter
+                val classic = classicCapablePod(context, device)
+                if (classic == null) {
+                    Log.d(TAG, "LE_AUDIO connected, no BR/EDR counterpart for ${device.address}")
+                    return@hookAfter
+                }
+                Log.i(TAG, "LE_AUDIO connected: ${device.address} -> RFCOMM over ${classic.address}")
+                registerNotificationSettingsReceiver(context)
+                oppoConnected = true
+                refreshHeadsetIconSetting()
+                RfcommController.connectPod(context, classic, prefs)
+            }
+            hookAfter(
+                findMethod(
+                    "com.android.bluetooth.le_audio.LeAudioService",
+                    "deviceDisconnected",
+                    BluetoothDevice::class.java,
+                    Boolean::class.javaPrimitiveType!!,
+                )
+            ) {
+                val device = args[0] as? BluetoothDevice ?: return@hookAfter
+                val context = instance as? ContextWrapper ?: return@hookAfter
+                if (hasAnyPodProfileConnected(context)) {
+                    Log.d(TAG, "LE_AUDIO disconnected but another pod profile is still up, keep RFCOMM")
+                    return@hookAfter
+                }
+                oppoConnected = false
+                RfcommController.disconnectedPod(context, device)
+            }
+            Log.d(TAG, "hooked LeAudioService deviceConnected/deviceDisconnected for LC3-only control")
+        }.onFailure { Log.w(TAG, "LE Audio hooks skipped", it) }
+
         // HyperOS 的 HeadsetIconShowManager 独占 wireless_headset 图标：设备连上后若不被
         // 小米识别（OPPO 即如此），它会在 ~500ms 后主动隐藏，覆盖本模块的点亮。在 OPPO 连接
         // 且用户要求显示时吞掉针对该图标的隐藏调用。
@@ -189,6 +234,30 @@ object HeadsetStateDispatcher : HookContext() {
     }
 
     /**
+     * LE Audio 事件里的地址可能是纯 LE 的那只耳（Enco X3 上是 …:46:3B），它没有 BR/EDR
+     * 链路密钥，RFCOMM 拨不过去。这里换成配对表里同一副耳的经典地址：type 非 LE 且名字认得出
+     * OPPO（Enco X3 的主耳 …:6E:5A 是 DUAL，LE 与经典共用一个身份）。
+     */
+    @SuppressLint("MissingPermission")
+    private fun classicCapablePod(context: Context, device: BluetoothDevice): BluetoothDevice? {
+        if (isOppoPod(device) && device.type != BluetoothDevice.DEVICE_TYPE_LE) return device
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return null
+        val bonded = runCatching { adapter.bondedDevices }.getOrNull() ?: return null
+        return bonded.firstOrNull { isOppoPod(it) && it.type != BluetoothDevice.DEVICE_TYPE_LE }
+    }
+
+    /** LEA 掉线不等于这副耳断开：A2DP/HFP 或另一只耳的 LEA 还在时不该拆掉 RFCOMM 会话 */
+    @SuppressLint("MissingPermission")
+    private fun hasAnyPodProfileConnected(context: Context): Boolean {
+        val bluetoothManager = context.getSystemService(BluetoothManager::class.java) ?: return false
+        return listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
+            .any { profile ->
+                runCatching { bluetoothManager.getConnectedDevices(profile).any(::isOppoPod) }
+                    .getOrDefault(false)
+            }
+    }
+
+    /**
      * Detect OPPO earphones by checking if the device name contains "oppo" (case insensitive).
      */
     @SuppressLint("MissingPermission")
@@ -209,7 +278,7 @@ object HeadsetStateDispatcher : HookContext() {
     @SuppressLint("MissingPermission")
     private fun bootstrapConnectedDevice(context: Context) {
         val bluetoothManager = context.getSystemService(BluetoothManager::class.java) ?: return
-        val device = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)
+        val device = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
             .asSequence()
             .flatMap { profile ->
                 runCatching { bluetoothManager.getConnectedDevices(profile).asSequence() }
@@ -222,8 +291,10 @@ object HeadsetStateDispatcher : HookContext() {
                 return
             }
 
-        Log.i(TAG, "connected-device bootstrap found ${device.address}")
-        RfcommController.connectPod(context, device, prefs)
+        // 只连 LE Audio 时这里拿到的可能是纯 LE 的那只，RFCOMM 拨不动，换成经典地址
+        val target = classicCapablePod(context, device) ?: device
+        Log.i(TAG, "connected-device bootstrap found ${device.address}, RFCOMM target ${target.address}")
+        RfcommController.connectPod(context, target, prefs)
     }
 
 }
