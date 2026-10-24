@@ -1183,6 +1183,20 @@ fun MainUI(
                                 connectedDevicesReceived = displayConnectedDevicesReceived,
                             )
                         }
+
+                        FitTestSheet(
+                            show = showFitTestSheet,
+                            onDismissRequest = {
+                                if (displayCalibration.isBusy) {
+                                    dispatchCalibration(CalibrationCommand.CANCEL)
+                                }
+                                showFitTestSheet = false
+                            },
+                            state = displayCalibration,
+                            supported = activeProfile.value.fitDetectionVisible,
+                            onStart = { dispatchCalibration(CalibrationCommand.START_FIT) },
+                            onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
+                        )
                     }
                 },
                 settingsContent = { extraBottom ->
@@ -1280,20 +1294,6 @@ fun MainUI(
                     )
                     }
                 },
-            )
-
-            FitTestSheet(
-                show = showFitTestSheet,
-                onDismissRequest = {
-                    if (displayCalibration.isBusy) {
-                        dispatchCalibration(CalibrationCommand.CANCEL)
-                    }
-                    showFitTestSheet = false
-                },
-                state = displayCalibration,
-                supported = activeProfile.value.fitDetectionVisible,
-                onStart = { dispatchCalibration(CalibrationCommand.START_FIT) },
-                onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
             )
         }
         entry<Screen.DevicePicker> {
