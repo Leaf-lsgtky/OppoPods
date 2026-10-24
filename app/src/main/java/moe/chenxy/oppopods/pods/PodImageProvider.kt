@@ -8,7 +8,7 @@ import android.os.ParcelFileDescriptor
 
 /**
  * 只读供图 Provider：让被 hook 的系统进程（com.android.bluetooth / SystemUI）能读取
- * 用户自定义的耳机素材。URI: content://moe.chenxy.oppopods.assets/<slotKey>。
+ * 用户自定义或欢律在线耳机素材。URI: content://moe.chenxy.oppopods.assets/<slotKey>。
  * 只暴露 [PodImageSlot] 里的已知槽位，未设置的槽位返回 null 由调用方回退内置资源。
  */
 class PodImageProvider : ContentProvider() {

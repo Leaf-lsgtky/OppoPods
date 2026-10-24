@@ -64,12 +64,12 @@ import kotlinx.coroutines.delay
 import moe.chenxy.oppopods.pods.PodImageSlot
 import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.ui.AppTheme
+import moe.chenxy.oppopods.ui.AppThemeConfig
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class ConnectionPopupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,11 +81,6 @@ class ConnectionPopupActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
-        val colorSchemeMode = when (prefs.getInt("theme_mode", 0)) {
-            1 -> ColorSchemeMode.Light
-            2 -> ColorSchemeMode.Dark
-            else -> ColorSchemeMode.System
-        }
 
         val initialBatteryParams = intent.batteryStatusCompat() ?: BatteryParams()
         val initialDeviceName = intent.getStringExtra("device_name").orEmpty()
@@ -98,7 +93,7 @@ class ConnectionPopupActivity : ComponentActivity() {
         val connectVideoFile = PodImageStore.customFile(this, PodImageSlot.CONNECT_VIDEO)
 
         setContent {
-            AppTheme(colorSchemeMode = colorSchemeMode) {
+            AppTheme(config = AppThemeConfig.load(prefs)) {
                 ConnectionPopupContent(
                     initialDeviceName = initialDeviceName,
                     initialBatteryParams = initialBatteryParams,

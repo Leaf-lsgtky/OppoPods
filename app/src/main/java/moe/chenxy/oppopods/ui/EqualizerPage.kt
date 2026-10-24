@@ -215,14 +215,14 @@ fun EqualizerPage(
                 .padding(bottom = 12.dp),
         )
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TextButton(
                 text = stringResource(R.string.cancel),
                 onClick = { showNewDialog = false },
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(20.dp))
             TextButton(
                 text = stringResource(R.string.confirm),
                 enabled = newName.trim().isNotEmpty(),
@@ -254,14 +254,14 @@ fun EqualizerPage(
         onDismissRequest = { deleteTarget = null },
     ) {
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TextButton(
                 text = stringResource(R.string.cancel),
                 onClick = { deleteTarget = null },
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(20.dp))
             TextButton(
                 text = stringResource(R.string.confirm),
                 colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -293,14 +293,14 @@ fun EqualizerPage(
                 .padding(bottom = 12.dp),
         )
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TextButton(
                 text = stringResource(R.string.cancel),
                 onClick = { showRenameDialog = false },
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(20.dp))
             TextButton(
                 text = stringResource(R.string.confirm),
                 enabled = renameName.trim().isNotEmpty(),

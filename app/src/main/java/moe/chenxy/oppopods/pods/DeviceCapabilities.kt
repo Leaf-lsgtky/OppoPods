@@ -1,9 +1,12 @@
 package moe.chenxy.oppopods.pods
 
+import kotlinx.serialization.Serializable
+
 /**
  * 一个可选的 ANC 模式项（按机型 noiseReductionMode 动态生成）。
  * 主模式可含若干子模式（如"降噪"下的智能/深度/中度/轻度）；无子模式则直接可发送。
  */
+@Serializable
 data class AncOption(
     val key: String,
     val protocolIndex: Int,
@@ -21,6 +24,14 @@ object AncKeys {
     const val LIGHT = "Light"
     const val MEDIUM = "Medium"
     const val DEEP = "Deep"
+
+    /**
+     * 通透模式的两个人声变体：
+     * - [VOCAL_ENHANCE]：Enco X2/X3 的通透子档「强化人声」，protocolIndex 9。
+     * - [LISTEN]：Free2/Free2i/Air2 Pro/R Pro 的独立主档「聆听」，protocolIndex 3。
+     */
+    const val VOCAL_ENHANCE = "VocalEnhance"
+    const val LISTEN = "Listen"
 }
 
 /**
@@ -85,6 +96,18 @@ data class DeviceCapabilities(
     val hasAdaptiveAnc: Boolean = false,
     /** NC 落在 idx0 且无子模式的老机型：降噪/通透语义与现代机型相反。 */
     val isLegacyAnc: Boolean = false,
+
+    /** 贴合度检测（function.fitDetection）。 */
+    val hasFitDetection: Boolean = false,
+    /** 黄金听感（function.hearingEnhancement / hearingEnhancementNew）。 */
+    val hasHearingEnhancement: Boolean = false,
+    /** 黄金听感的可选耳道扫描（function.earScan）。 */
+    val hasEarScan: Boolean = false,
+    /** 左右耳差异提示阈值；仅影响结果页文案。 */
+    val hearingJudgeDb: Int = 0,
+
+    /** 通透模式下可选的人声变体（标准通透 / 强化人声 / 聆听）。 */
+    val transparencyVariants: List<AncOption> = emptyList(),
 
     /** 按 JSON noiseReductionMode 构建的层级化 ANC 选项。 */
     val ancOptions: List<AncOption> = emptyList(),

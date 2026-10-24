@@ -13,6 +13,9 @@ Based on [HyperPods](https://github.com/Art-Chen/HyperPods) by Art_Chen.
 ### Features
 
 - **ANC Control** — Switch between Off / Noise Cancellation / Adaptive / Transparency
+- **Transparency Voice** — Enco X2/X3 expose “Vocal enhancement” inside Transparency; Free2-family models expose “Listen”
+- **Earbud Fit Test** — Checks left/right seal and suggests adjusting the eartips
+- **Golden Sound** — Ear scan (supported models), a 12-step hearing test, then save and enable a personalized profile
 - **Spatial Audio** — Switch between Off / Fixed / Head Tracking from the home detail page
 - **Game Mode** — Low-latency audio toggle with optional auto-enable on connect
 - **Battery Display** — Real-time battery level for left ear, right ear, and charging case
@@ -57,6 +60,8 @@ AA [TotalLen] 00 00 [Cmd 2B LE] [Seq] [PayLen 2B LE] [Payload...]
 | Spatial Audio Notify | `0x0510` | `<mode>` — unsolicited spatial audio state |
 | Batch Status Query | `0x010D` | Fixed blob (see below), wakes earbuds, no prerequisite |
 | Batch Status Response | `0x810D` | Key-value stream; find byte `0x28`, next byte = game mode (`01`=On, `00`=Off) |
+
+Fit test and Golden Sound commands (`0x0405`, `0x040D`, `0x040E`, `0x0115`, `0x0116`, `0x0411`, `0x0415`, events 4/8/14) are documented in [docs/Calibration_Features.md](docs/Calibration_Features.md).
 
 **Batch Status Query (fixed hex):**
 ```
@@ -115,11 +120,15 @@ GPL-3.0
 ### 功能
 
 - **降噪控制** — 在关闭 / 降噪 / 自适应 / 通透模式之间切换
+- **通透人声** — Enco X2/X3 在通透模式下可切换「强化人声」；Free2 系列提供「聆听」
+- **耳塞贴合度检测** — 检测左右耳贴合状态并给出调整建议
+- **黄金听感** — 支持耳扫（部分型号）、12 步测听，保存并启用专属听感
 - **空间音频** — 首页详情页支持关闭 / 固定 / 头部跟踪三档切换
 - **游戏模式** — 低延迟音频开关，支持连接时自动开启
 - **电量显示** — 实时显示左耳、右耳、充电盒电量
 - **快捷弹窗** — 点击常驻通知，弹出浮窗显示电量、降噪、游戏模式控制；点击「更多」进入完整页面
 - **HyperOS 集成** — 连接时焦点岛电量弹窗、可选超级岛样式常驻通知、状态栏耳机图标
+- **官方耳机素材** — 按型号/协议配色从欢律服务器获取左耳、右耳、充电盒、详情图，并用 Filament 渲染 `.vfxms` 3D 模型（含容器内 IBL），见 [素材与 3D 模型](docs/Official_Artwork_3D.md)
 - **深色模式** — 完整深色主题支持，包括弹窗对话框与电池图标
 - **独立模式** — 在 Xposed 钩子不可用时通过 RFCOMM 直连耳机
 
@@ -151,6 +160,7 @@ AA [总长度] 00 00 [命令 2字节小端] [序列号] [载荷长度 2字节小
 | 功能 | 命令 | 载荷 |
 |------|------|------|
 | 降噪控制 | `0x0404` | `01 01 <模式>` — `01`=关闭, `02`=降噪, `04`=通透, `00 08`=自适应 |
+| 读取配色 | `0x010B` | GET；响应 `0x810B` 的 `payload[1]` 为颜色编号，用于匹配官方素材 |
 | 游戏模式设置 | `0x0403` | `28 01`=开, `28 00`=关 |
 | 空间音频设置 | `0x0422` | `<模式>` — `00`=关闭, `01`=固定, `02`=头部跟踪 |
 | 电量查询 | `0x0106` | （空） |
@@ -159,6 +169,8 @@ AA [总长度] 00 00 [命令 2字节小端] [序列号] [载荷长度 2字节小
 | 空间音频主动上报 | `0x0510` | `<模式>` — 耳机主动推送空间音频状态 |
 | 批量状态查询 | `0x010D` | 固定数据包（见下），自带唤醒权重，无需前置指令 |
 | 批量状态响应 | `0x810D` | 键值流；查找字节 `0x28`，下一字节为游戏模式状态（`01`=开, `00`=关） |
+
+贴合度与黄金听感命令（`0x0405`、`0x040D`、`0x040E`、`0x0115`、`0x0116`、`0x0411`、`0x0415`，事件 4/8/14）见 [docs/Calibration_Features.md](docs/Calibration_Features.md)。
 
 **批量状态查询（固定数据）：**
 ```

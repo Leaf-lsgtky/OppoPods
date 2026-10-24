@@ -30,6 +30,40 @@ class CapabilityProfileFactoryTest {
     private fun profileOf(id: String): DeviceProfile =
         CapabilityProfileFactory.from(DeviceModelRegistry.parse(entryById(id), ""))
 
+    // ---------------------------------------------------------------- 新型号
+
+    /**
+     * Enco X4 等新一代型号来自欢律云端白名单的 `compatWhiteList`，
+     * 项目内嵌表曾经完全没有它们——连"支持哪些功能"都判断不出来。
+     */
+    @Test
+    fun `newer models are present in the bundled whitelist`() {
+        listOf(
+            "06EC10" to "OPPO Enco X4",
+            "06F450" to "OPPO Enco Buds3s",
+            "067814" to "OnePlus Buds Pro 4",
+            "06E410" to "OnePlus Buds Clip",
+        ).forEach { (id, name) ->
+            assertEquals(name, entryById(id).optString("name"))
+        }
+    }
+
+    @Test
+    fun `enco x4 exposes the calibration and spatial capabilities`() {
+        val caps = DeviceModelRegistry.parse(entryById("06EC10"), "OPPO Enco X4")
+        assertEquals("OPPO Enco X4", caps.modelName)
+        assertTrue(caps.hasHearingEnhancement)
+        assertTrue(caps.hasEarScan)
+        assertTrue(caps.hasFitDetection)
+        assertTrue(caps.hasAdaptiveAnc)
+        assertTrue(caps.spatialTypes.contains(2))
+        // 降噪协议位：关闭 0 / 降噪 1 / 通透 2 / 自适应 11
+        assertEquals(1, caps.ancNameToIndex[AncKeys.NC])
+        assertEquals(0, caps.ancNameToIndex[AncKeys.OFF])
+        assertEquals(2, caps.ancNameToIndex[AncKeys.TRANSPARENCY])
+        assertEquals(11, caps.ancNameToIndex[AncKeys.ADAPTIVE])
+    }
+
     private fun payloadOf(profile: DeviceProfile, key: String): String? =
         profile.commands[key]?.payload
 
@@ -67,17 +101,33 @@ class CapabilityProfileFactoryTest {
         assertEquals("01 01 00 08", payloadOf(profile, ProfileKeys.ANC_ADAPTIVE))
     }
 
-    /** X2/X3 的自适应是通透档的子模式（idx9），不能生成顶层自适应开关。 */
+    /** X2/X3 的通透子档是「强化人声」（idx9），不能生成顶层自适应开关。 */
     @Test
-    fun `transparency adaptive child is not exposed as a main mode`() {
+    fun `transparency vocal child is not exposed as a main mode`() {
         for (id in listOf("063C10", "067410")) {
             val caps = DeviceModelRegistry.parse(entryById(id), "")
             val profile = CapabilityProfileFactory.from(caps)
 
             assertFalse("$id must not expose adaptive", caps.hasAdaptiveAnc)
             assertFalse("$id must not map adaptive as a command", caps.ancNameToIndex.containsKey(AncKeys.ADAPTIVE))
-            assertEquals("$id adaptive child must belong to transparency", AncKeys.TRANSPARENCY, caps.ancIndexToName[9])
+            assertEquals(
+                "$id transparency child must be vocal enhancement",
+                AncKeys.VOCAL_ENHANCE,
+                caps.ancIndexToName[9],
+            )
             assertFalse("$id must not generate adaptive payload", profile.commands.containsKey(ProfileKeys.ANC_ADAPTIVE))
+
+            // 通透变体：标准通透（父位）与强化人声（子位）都要可用于发送。
+            assertEquals(
+                listOf(AncKeys.TRANSPARENCY, AncKeys.VOCAL_ENHANCE),
+                caps.transparencyVariants.map { it.key },
+            )
+            assertEquals(2, caps.transparencyVariants[0].protocolIndex)
+            assertEquals(9, caps.transparencyVariants[1].protocolIndex)
+            assertEquals(
+                "01 01 00 02",
+                CapabilityProfileFactory.ancPayload(caps.transparencyVariants[1].protocolIndex),
+            )
         }
     }
 

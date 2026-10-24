@@ -21,38 +21,41 @@ object OppoPackets {
     }
 
     /** Build a complete OPPO protocol packet with auto-incrementing seq. */
-    fun buildPacket(cmd: Int, seq: Int = nextSeq(), payload: ByteArray = byteArrayOf()): ByteArray {
-        val payLen = payload.size
-        val totalLen = 7 + payLen
-        val packet = ByteArray(2 + totalLen)
-        packet[0] = 0xAA.toByte()
-        packet[1] = totalLen.toByte()
-        packet[2] = 0x00
-        packet[3] = 0x00
-        packet[4] = (cmd and 0xFF).toByte()
-        packet[5] = ((cmd shr 8) and 0xFF).toByte()
-        packet[6] = seq.toByte()
-        packet[7] = (payLen and 0xFF).toByte()
-        packet[8] = ((payLen shr 8) and 0xFF).toByte()
-        payload.copyInto(packet, 9)
-        return packet
-    }
+    fun buildPacket(cmd: Int, seq: Int = nextSeq(), payload: ByteArray = byteArrayOf()): ByteArray =
+        buildFrame(cmd, seq, payload)
 
     /** Build with fixed seq (for seed profile packets that need deterministic output). */
-    fun buildPacketFixedSeq(cmd: Int, seq: Int = 0xF0, payload: ByteArray = byteArrayOf()): ByteArray {
+    fun buildPacketFixedSeq(cmd: Int, seq: Int = 0xF0, payload: ByteArray = byteArrayOf()): ByteArray =
+        buildFrame(cmd, seq, payload)
+
+    /**
+     * OPOv1 组帧：`AA <长度:LEB128 1~2 字节> 00 00 <cmd LE16> <seq> <payLen LE16> <payload>`。
+     *
+     * 长度字段是变长整数：≥128 时必须写两字节，否则耳机按自己的变长解析会把
+     * 后续所有字节读错。之前固定单字节，导致耳扫保存 / 耳扫滤波这类大包
+     * 在耳机侧根本无法解析。
+     */
+    private fun buildFrame(cmd: Int, seq: Int, payload: ByteArray): ByteArray {
         val payLen = payload.size
         val totalLen = 7 + payLen
-        val packet = ByteArray(2 + totalLen)
-        packet[0] = 0xAA.toByte()
-        packet[1] = totalLen.toByte()
-        packet[2] = 0x00
-        packet[3] = 0x00
-        packet[4] = (cmd and 0xFF).toByte()
-        packet[5] = ((cmd shr 8) and 0xFF).toByte()
-        packet[6] = seq.toByte()
-        packet[7] = (payLen and 0xFF).toByte()
-        packet[8] = ((payLen shr 8) and 0xFF).toByte()
-        payload.copyInto(packet, 9)
+        val lengthBytes = if (totalLen < 0x80) 1 else 2
+        val packet = ByteArray(1 + lengthBytes + totalLen)
+        var index = 0
+        packet[index++] = 0xAA.toByte()
+        if (lengthBytes == 1) {
+            packet[index++] = totalLen.toByte()
+        } else {
+            packet[index++] = ((totalLen and 0x7F) or 0x80).toByte()
+            packet[index++] = ((totalLen shr 7) and 0xFF).toByte()
+        }
+        packet[index++] = 0x00
+        packet[index++] = 0x00
+        packet[index++] = (cmd and 0xFF).toByte()
+        packet[index++] = ((cmd shr 8) and 0xFF).toByte()
+        packet[index++] = seq.toByte()
+        packet[index++] = (payLen and 0xFF).toByte()
+        packet[index++] = ((payLen shr 8) and 0xFF).toByte()
+        payload.copyInto(packet, index)
         return packet
     }
 
@@ -64,6 +67,9 @@ object OppoPackets {
 
     /** Query product id (getRemotePID): 0x0103 */
     fun buildQueryProductId(): ByteArray = buildPacket(Cmd.QUERY_PRODUCT_ID)
+
+    /** Query protocol color: 0x010B. Used to pick the matching official artwork. */
+    fun buildQueryColor(): ByteArray = buildPacket(Cmd.QUERY_COLOR)
 
     /** Query the currently selected EQ preset: 0x010F */
     fun buildQueryEqualizer(): ByteArray = buildPacket(Cmd.QUERY_EQ)
@@ -154,15 +160,55 @@ object OppoPackets {
         return payload
     }
 
-    /** Subscribe to notification events: 0x0205 */
+    /**
+     * Subscribe to notification events: 0x0205
+     *
+     * 部分固件（Enco X3）的 `0x8200` 能力表里**不包含耳道扫描事件 14**，
+     * 但仍接受对它的订阅并在此后主动上报；官方 App 的说明也提到 X4
+     * 「0200 未声明 14，却仍会发 event14」。因此这里固定补上检测需要用到的
+     * 事件（4=贴合度、8=测听状态、14=耳道扫描），避免漏订阅导致耳扫一直超时。
+     */
     fun buildSubscribeBroadcast(codes: List<Int>): ByteArray {
-        val payload = byteArrayOf(codes.size.toByte()) + codes.map { it.toByte() }.toByteArray()
+        val required = listOf(
+            Cmd.EVENT_CODE_FIT_RESULT,
+            Cmd.EVENT_CODE_HEARING_STATUS,
+            Cmd.EVENT_CODE_EAR_SCAN,
+        )
+        val merged = (codes + required).distinct()
+        val payload = byteArrayOf(merged.size.toByte()) + merged.map { it.toByte() }.toByteArray()
         return buildPacket(Cmd.SUBSCRIBE_BROADCAST, payload = payload)
     }
 }
 
+/**
+ * OPOv1 流式拆包器。
+ *
+ * 帧头结构（与官方 OPOv1 一致）：
+ * `AA <长度:LEB128 变长 1~2 字节> <control|保留位> <保留> [<fsn>] <inner...>`
+ *
+ * 关键点：**长度是变长整数而不是单字节**。之前按单字节解析、并把帧长上限设成
+ * 512，导致任何长度 ≥128 的包都被算错并丢弃——耳道扫描 blob 与滤波曲线恰恰
+ * 都是 KB 级，于是耳扫永远收不到 event 14、取曲线也永远超时。
+ *
+ * 大消息还会被拆成多帧（control 1=首片 2=中间 3=末片，fsn 从 1 递增），
+ * 这里按序重组后再交给上层。
+ *
+ * 输出仍采用旧的帧布局（`AA ... cmd LE16 seq payLen LE16 payload`），
+ * 但总长字节改为占位 0、真实长度只由 `payLen` 表示，这样既有解析器无需改动，
+ * 又能承载任意长度的 payload。
+ */
 class OppoPacketFramer {
     private var pending = ByteArray(0)
+    private var message = ByteArray(0)
+    private var fragmenting = false
+    private var nextFsn = 0
+
+    fun reset() {
+        pending = ByteArray(0)
+        message = ByteArray(0)
+        fragmenting = false
+        nextFsn = 0
+    }
 
     fun append(buffer: ByteArray, length: Int): List<ByteArray> {
         if (length <= 0) return emptyList()
@@ -170,36 +216,143 @@ class OppoPacketFramer {
         pending += buffer.copyOfRange(0, length)
         val frames = mutableListOf<ByteArray>()
 
-        while (pending.isNotEmpty()) {
+        while (true) {
             val start = pending.indexOf(OPPO_PACKET_HEADER)
             if (start < 0) {
                 pending = ByteArray(0)
                 break
             }
-            if (start > 0) {
-                pending = pending.copyOfRange(start, pending.size)
-            }
-            if (pending.size < 2) break
+            if (start > 0) pending = pending.copyOfRange(start, pending.size)
 
-            val totalLen = pending[1].toInt() and 0xFF
-            val frameLen = totalLen + 2
-            if (totalLen < OPPO_PACKET_MIN_TOTAL_LEN || frameLen > OPPO_PACKET_MAX_FRAME_LEN) {
+            // LEB128：最高位是续读标志，协议最多 2 字节（≤16383）。
+            var declared = 0
+            var lengthBytes = 0
+            var headerReady = true
+            while (true) {
+                if (1 + lengthBytes >= pending.size) {
+                    headerReady = false
+                    break
+                }
+                val value = pending[1 + lengthBytes].toInt() and 0xFF
+                lengthBytes++
+                if (lengthBytes > OPPO_PACKET_MAX_LENGTH_BYTES) {
+                    headerReady = false
+                    break
+                }
+                declared = declared or ((value and 0x7F) shl (7 * (lengthBytes - 1)))
+                if (value and 0x80 == 0) break
+            }
+            if (!headerReady) {
+                // 头部还不完整：丢掉这个假头继续找下一个 AA，避免死等。
+                if (pending.size >= 3) {
+                    pending = pending.copyOfRange(1, pending.size)
+                    continue
+                }
+                break
+            }
+
+            val frameSize = 1 + lengthBytes + declared
+            if (declared < OPPO_PACKET_MIN_LENGTH || frameSize > OPPO_PACKET_MAX_FRAME_LEN) {
                 pending = pending.copyOfRange(1, pending.size)
                 continue
             }
-            if (pending.size < frameLen) break
+            if (pending.size < frameSize) break
 
-            frames += pending.copyOfRange(0, frameLen)
-            pending = pending.copyOfRange(frameLen, pending.size)
+            val frame = pending.copyOfRange(0, frameSize)
+            pending = pending.copyOfRange(frameSize, pending.size)
+            decodeFrame(frame, lengthBytes, frames)
         }
 
         return frames
     }
 
+    private fun decodeFrame(frame: ByteArray, lengthBytes: Int, out: MutableList<ByteArray>) {
+        var offset = 1 + lengthBytes
+        if (offset + 2 > frame.size) {
+            reset()
+            return
+        }
+        // 只用低 2 位；第二个 L1 头字节协议保留，直接跳过。
+        val control = frame[offset].toInt() and 0x03
+        offset += 2
+
+        if (control == 0) {
+            if (fragmenting) {
+                reset()
+                return
+            }
+            emit(frame.copyOfRange(offset, frame.size), out)
+            return
+        }
+
+        if (offset >= frame.size) {
+            reset()
+            return
+        }
+        val fsn = frame[offset].toInt() and 0xFF
+        offset++
+        if (offset > frame.size) {
+            reset()
+            return
+        }
+
+        when (control) {
+            1 -> {
+                if (fragmenting || fsn != 0) {
+                    reset()
+                    return
+                }
+                fragmenting = true
+                nextFsn = 1
+                message = ByteArray(0)
+            }
+
+            else -> {
+                if (!fragmenting || fsn != nextFsn) {
+                    reset()
+                    return
+                }
+                nextFsn++
+            }
+        }
+
+        message += frame.copyOfRange(offset, frame.size)
+        if (message.size > OPPO_PACKET_MAX_MESSAGE_LEN) {
+            reset()
+            return
+        }
+        if (control == 3) {
+            val complete = message
+            message = ByteArray(0)
+            fragmenting = false
+            nextFsn = 0
+            emit(complete, out)
+        }
+    }
+
+    /**
+     * inner 布局：`cmd LE16 | seq | payloadLen LE16 | payload`。
+     * 这里重新包装成标准帧（含 LEB128 长度），使大包也能被既有的
+     * `commandOf` / `payloadOf` 正确解析。
+     */
+    private fun emit(inner: ByteArray, out: MutableList<ByteArray>) {
+        if (inner.size < 5) return
+        val payloadLen = (inner[3].toInt() and 0xFF) or ((inner[4].toInt() and 0xFF) shl 8)
+        if (inner.size < 5 + payloadLen) return
+        val command = (inner[0].toInt() and 0xFF) or ((inner[1].toInt() and 0xFF) shl 8)
+        val seq = inner[2].toInt() and 0xFF
+        val payload = inner.copyOfRange(5, 5 + payloadLen)
+        out += OppoPackets.buildPacketFixedSeq(command, seq, payload)
+    }
+
     companion object {
         private val OPPO_PACKET_HEADER = 0xAA.toByte()
-        private const val OPPO_PACKET_MIN_TOTAL_LEN = 7
-        private const val OPPO_PACKET_MAX_FRAME_LEN = 512
+        private const val OPPO_PACKET_MIN_LENGTH = 3
+        private const val OPPO_PACKET_MAX_LENGTH_BYTES = 2
+
+        /** 与官方 PacketDecoder.MaximumFrameBytes 一致。 */
+        private const val OPPO_PACKET_MAX_FRAME_LEN = 12_388
+        private const val OPPO_PACKET_MAX_MESSAGE_LEN = 65_535 + 5
     }
 }
 
@@ -250,6 +403,10 @@ object Cmd {
     const val QUERY_PRODUCT_ID = 0x0103
     /** Product id response */
     const val PRODUCT_ID_RESPONSE = 0x8103
+    /** Query protocol color */
+    const val QUERY_COLOR = 0x010B
+    /** Protocol color response */
+    const val COLOR_RESPONSE = 0x810B
     /** Set EQ preset */
     const val SET_EQ_PRESET = 0x0406
     /** Query current EQ preset */
@@ -300,6 +457,13 @@ object Cmd {
     const val BROADCAST_CODES_RESPONSE = 0x8200
     /** Subscribe to notification events */
     const val SUBSCRIBE_BROADCAST = 0x0205
+
+    /** 0x0204 事件码：贴合度结果 */
+    const val EVENT_CODE_FIT_RESULT = 4
+    /** 0x0204 事件码：测听状态 */
+    const val EVENT_CODE_HEARING_STATUS = 8
+    /** 0x0204 事件码：耳道扫描数据 */
+    const val EVENT_CODE_EAR_SCAN = 14
     /** Subscribe response */
     const val SUBSCRIBE_BROADCAST_RESPONSE = 0x8205
 }
@@ -434,7 +598,16 @@ object BatteryParser {
  */
 object AncModeParser {
 
-    data class AncResult(val mode: NoiseControlMode, val noiseLevel: Int? = null)
+    /**
+     * [bitmapIndex] 是本次命中的协议位号（-1 表示静态表回退）。
+     * 通透的人声变体（强化人声 / 聆听）会归并为 [NoiseControlMode.TRANSPARENCY]，
+     * UI 再用位号在 `transparencyVariants` 中定位具体档位。
+     */
+    data class AncResult(
+        val mode: NoiseControlMode,
+        val noiseLevel: Int? = null,
+        val bitmapIndex: Int = -1,
+    )
 
     /**
      * 按机型索引表解析。[indexToName] 来自白名单 `noiseReductionMode` 的 protocolIndex，
@@ -456,7 +629,8 @@ object AncModeParser {
             val name = indexToName[index] ?: continue
             val mode = when (name) {
                 AncKeys.OFF -> NoiseControlMode.OFF
-                AncKeys.TRANSPARENCY -> NoiseControlMode.TRANSPARENCY
+                AncKeys.TRANSPARENCY, AncKeys.VOCAL_ENHANCE, AncKeys.LISTEN ->
+                    NoiseControlMode.TRANSPARENCY
                 AncKeys.ADAPTIVE -> NoiseControlMode.ADAPTIVE
                 else -> NoiseControlMode.NOISE_CANCELLATION
             }
@@ -467,7 +641,7 @@ object AncModeParser {
                 AncKeys.DEEP -> NoiseLevel.DEEP
                 else -> null
             }
-            return AncResult(mode, level)
+            return AncResult(mode, level, index)
         }
         return null
     }
@@ -564,6 +738,23 @@ object ProductIdParser {
                 ((data[payloadStart + 2].toInt() and 0xFF) shl 8) or
                 ((data[payloadStart + 3].toInt() and 0xFF) shl 16)
         return "%06X".format(id)
+    }
+}
+
+object ColorParser {
+    /**
+     * 解析 0x810B：payload `[status(1)][color(1)]`。
+     * 颜色是型号配色编号，用于请求对应的欢律官方素材；未知时返回 null。
+     */
+    fun parse(data: ByteArray): Int? {
+        if (data.size < 11) return null
+        if (data[0] != 0xAA.toByte()) return null
+        val cmd = (data[4].toInt() and 0xFF) or ((data[5].toInt() and 0xFF) shl 8)
+        if (cmd != Cmd.COLOR_RESPONSE) return null
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        if (payLen < 2 || data.size < 9 + payLen) return null
+        if ((data[9].toInt() and 0xFF) != 0) return null
+        return data[10].toInt() and 0xFF
     }
 }
 

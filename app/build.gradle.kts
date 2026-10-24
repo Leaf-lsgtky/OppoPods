@@ -24,6 +24,14 @@ android {
         targetSdk = 36
         versionCode = 15
         versionName = "1.4.0"
+
+        ndk {
+            // Filament 是纯 native 引擎（libfilament-jni / libgltfio-jni /
+            // libfilament-utils-jni），两套 ABI 合计进包约 12.5MB。
+            // 只保留 arm64-v8a：目标机型（HyperOS / Android 15+）全部是
+            // 64 位 ARM 设备，armeabi-v7a 只会白白多出 5.41MB。
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -97,10 +105,12 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.blur)
-    implementation(libs.miuix.navigation3.ui)
+    implementation(libs.miuix.nav)
 
-    // Navigation3
-    implementation(libs.navigation3.runtime)
+    // 官方素材里的 3D 模型用 Filament（欢律同款引擎）渲染
+    implementation(libs.filament)
+    implementation(libs.gltfio)
+    implementation(libs.filament.utils)
 
     // HyperOS Focus Island API
     implementation(libs.focus.api)

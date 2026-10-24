@@ -4,12 +4,17 @@ object OppoPodsAction {
     const val ACTION_PODS_UI_INIT = "chen.action.oppopods.ui_init"
     const val ACTION_PODS_CONNECTED = "chen.action.oppopods.pods_connected"
     const val ACTION_PODS_DISCONNECTED = "chen.action.oppopods.pods_disconnected"
+    /** 应用请求断开耳机连接（hook 模式下由蓝牙进程执行）。 */
+    const val ACTION_PODS_DISCONNECT_REQUEST = "chen.action.oppopods.disconnect_request"
     const val ACTION_PODS_BATTERY_CHANGED = "chen.action.oppopods.pods_battery_changed"
     const val ACTION_ANC_SELECT = "chen.action.oppopods.anc_select"
     const val ACTION_PODS_ANC_CHANGED = "chen.action.oppopods.pods_anc_select"
+    const val ACTION_PODS_COLOR_CHANGED = "chen.action.oppopods.pods_color_changed"
+    const val EXTRA_DEVICE_COLOR = "device_color"
     const val ACTION_GET_PODS_MAC = "chen.action.oppopods.get_pods_mac"
     const val ACTION_PODS_MAC_RECEIVED = "chen.action.oppopods.pods_mac_received"
     const val ACTION_REFRESH_STATUS = "chen.action.oppopods.refresh_status"
+    const val EXTRA_CALIBRATION_PROFILE = "calibration_profile_json"
     const val ACTION_GAME_MODE_SET = "chen.action.oppopods.game_mode_set"
     const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
     const val ACTION_EQ_PRESET_SET = "chen.action.oppopods.eq_preset_set"
@@ -40,10 +45,29 @@ object OppoPodsAction {
     // RFCOMM 按 productId 精确识别后的配置档（com.android.bluetooth → App）
     const val ACTION_PODS_PROFILE_CHANGED = "chen.action.oppopods.pods_profile_changed"
 
+    // 通透人声变体（App → com.android.bluetooth）
+    const val ACTION_ANC_VARIANT_SELECT = "chen.action.oppopods.anc_variant_select"
+    // 通透人声变体回报（com.android.bluetooth → App）
+    const val ACTION_PODS_ANC_VARIANT_CHANGED = "chen.action.oppopods.pods_anc_variant_changed"
+
+    // 贴合度 / 黄金听感命令（App → com.android.bluetooth）
+    const val ACTION_CALIBRATION_COMMAND = "chen.action.oppopods.calibration_command"
+    // 贴合度 / 黄金听感状态快照（com.android.bluetooth → App），JSON 见 EXTRA_CALIBRATION_JSON
+    const val ACTION_PODS_CALIBRATION_STATE = "chen.action.oppopods.pods_calibration_state"
+
     const val EXTRA_PROFILE_JSON = "profile_json"
     const val EXTRA_EQ_ENTRIES_JSON = "eq_entries_json"
     const val EXTRA_ALLOW_RFCOMM_RECONNECT = "allow_rfcomm_reconnect"
     const val EXTRA_RFCOMM_CONNECTED = "rfcomm_connected"
+    const val EXTRA_ANC_VARIANT = "anc_variant"
+    const val EXTRA_CALIBRATION_JSON = "calibration_json"
+    const val EXTRA_CALIBRATION_COMMAND = "calibration_command"
+    const val EXTRA_CALIBRATION_HEARD = "calibration_heard"
+    const val EXTRA_CALIBRATION_LEVEL = "calibration_level"
+    const val EXTRA_CALIBRATION_RELEASED = "calibration_released"
+    const val EXTRA_CALIBRATION_ENABLED = "calibration_enabled"
+    const val EXTRA_CALIBRATION_NAME = "calibration_name"
+    const val EXTRA_CALIBRATION_PREVIEW = "calibration_preview"
 
     const val ACTION_BT_LOG_ENTRY = "chen.action.oppopods.bt_log_entry"
     const val EXTRA_BT_LOG_IS_SEND = "is_send"

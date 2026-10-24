@@ -34,6 +34,7 @@ import moe.chenxy.oppopods.pods.DeviceProfile
 import moe.chenxy.oppopods.pods.DeviceProfileStore
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.ui.AppTheme
+import moe.chenxy.oppopods.ui.AppThemeConfig
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
@@ -44,7 +45,6 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class PopupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,12 +52,7 @@ class PopupActivity : ComponentActivity() {
 
         setContent {
             val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
-            val colorSchemeMode = when (prefs.getInt("theme_mode", 0)) {
-                1 -> ColorSchemeMode.Light
-                2 -> ColorSchemeMode.Dark
-                else -> ColorSchemeMode.System
-            }
-            AppTheme(colorSchemeMode = colorSchemeMode) {
+            AppTheme(config = AppThemeConfig.load(prefs)) {
                 PopupContent(
                     onMore = {
                         val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)

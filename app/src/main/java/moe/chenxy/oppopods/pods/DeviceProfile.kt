@@ -31,6 +31,16 @@ data class DeviceProfile(
     val connectedDevicesVisible: Boolean = false,
     val spatialAudioVisible: Boolean = false,
     val spatialSoundVisible: Boolean = false,
+    /** 通透模式下的人声变体（标准通透 / 强化人声 / 聆听）；空表示无子档。 */
+    val transparencyVariants: List<AncOption> = emptyList(),
+    /** 耳塞贴合度检测入口。 */
+    val fitDetectionVisible: Boolean = false,
+    /** 黄金听感入口与向导。 */
+    val hearingEnhancementVisible: Boolean = false,
+    /** 黄金听感支持耳道扫描（决定 V2 滑块流程）。 */
+    val earScanVisible: Boolean = false,
+    /** 左右耳差异提示阈值；仅影响结果页文案。 */
+    val hearingJudgeDb: Int = 0,
     /** 型号白名单中的内置 EQ 预设；耳机端自定义预设由连接状态另行回传。 */
     val eqPresets: List<EqPreset> = emptyList(),
     val customEqVisible: Boolean = false,
@@ -113,6 +123,34 @@ data class DeviceProfile(
     /** 双设备连接整包。 */
     fun dualDevicePacket(enabled: Boolean): ByteArray =
         packet(if (enabled) ProfileKeys.SET_DUAL_DEVICE_ON else ProfileKeys.SET_DUAL_DEVICE_OFF)
+
+    /** 通透人声变体整包；[index] 来自 [transparencyVariants]。 */
+    fun transparencyVariantPacket(index: Int): ByteArray =
+        OppoPackets.buildPacket(
+            Cmd.SET_ANC,
+            payload = CapabilityProfileFactory.ancPayload(index).hexToBytes(),
+        )
+
+    /** 黄金听感开关（feature 0x0B）。 */
+    fun hearingEnabledPacket(enabled: Boolean): ByteArray =
+        OppoPackets.buildPacket(
+            Cmd.SET_GAME_MODE,
+            payload = byteArrayOf(0x0B, if (enabled) 1 else 0),
+        )
+
+    /** 是否存在通透下的人声增强/聆听档。 */
+    val hasTransparencyVoice: Boolean
+        get() = transparencyVariants.any {
+            it.key == AncKeys.VOCAL_ENHANCE || it.key == AncKeys.LISTEN
+        }
+
+    /** 供 [CalibrationEngine] 使用的白名单能力。 */
+    fun calibrationCapability(): CalibrationCapability = CalibrationCapability(
+        fitDetection = fitDetectionVisible,
+        hearingEnhancement = hearingEnhancementVisible,
+        earScan = earScanVisible,
+        hearingJudgeDb = hearingJudgeDb,
+    )
 }
 
 /** 降噪等级（仅在降噪模式下有效）。 */

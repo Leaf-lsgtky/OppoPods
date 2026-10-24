@@ -90,6 +90,15 @@ object DeviceProfileStore {
             }.getOrDefault(emptyList())
         } ?: emptyList()
 
+    /** 跨进程广播贴合度/黄金听感状态。 */
+    fun exportCalibration(state: CalibrationState): String =
+        json.encodeToString(CalibrationState.serializer(), state)
+
+    fun parseCalibration(text: String?): CalibrationState? =
+        text?.let {
+            runCatching { json.decodeFromString(CalibrationState.serializer(), it) }.getOrNull()
+        }
+
     // ------------------------------------------------------- 配置来源模式
 
     /** 当前配置来源模式。 */

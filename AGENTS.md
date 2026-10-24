@@ -21,7 +21,7 @@
 - 静态检查：`.\gradlew.bat :app:lintDebug`
 - 清理：`.\gradlew.bat clean`
 
-项目使用 Java 22、AGP 9.1、Kotlin 2.3、Compose、Navigation 3、Miuix 和 LibXposed API 102。Release 启用 R8 和资源压缩；Debug 不执行 ProGuard/R8。GitHub Actions 在 `master`、`main`、`dev`、`v*` 标签及对应 PR 上用 Java 22 构建 release APK，并在提供签名密钥时签名和发布。
+项目使用 Java 22、AGP 9.1、Kotlin 2.3、Compose、miuix-nav、Miuix 和 LibXposed API 102。Release 启用 R8 和资源压缩；Debug 不执行 ProGuard/R8。GitHub Actions 在 `master`、`main`、`dev`、`v*` 标签及对应 PR 上用 Java 22 构建 release APK，并在提供签名密钥时签名和发布。
 
 ## 工作区缓存
 
@@ -37,7 +37,7 @@ LibXposed 入口只保留 `HookEntry` 一个 Java entry，以支持 API 102 热�
 
 ## 测试与设备验证
 
-当前没有 `app/src/test/`、`app/src/androidTest/` 或测试框架依赖。提交前至少执行 `.\gradlew.bat :app:assembleDebug`。
+当前没有 `app/src/androidTest/`。单元测试位于 `app/src/test/`（JUnit4），提交前至少执行 `.\gradlew.bat :app:assembleDebug` 与 `.\gradlew.bat :app:testDebugUnitTest`。
 
 修改 Hook、蓝牙 RFCOMM、跨进程广播、通知、连接弹窗、系统设置页或 Focus Island 时，还需在 HyperOS Android 15+ 的 LSPosed 设备上手动回归，并覆盖 `scope.list` 中所有受影响进程。不要把仅在目标系统上存在的反射失败当作普通应用逻辑错误；Hook 代码应保持兼容性保护与可诊断日志。
 

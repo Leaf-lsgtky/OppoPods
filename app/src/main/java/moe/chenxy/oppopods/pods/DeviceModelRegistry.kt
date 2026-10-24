@@ -140,11 +140,33 @@ object DeviceModelRegistry {
         val target = normalize(deviceName)
         if (target.isEmpty()) return null
 
-        val match = matchPreferringFunction { normalize(it.optString("name")).let { n -> n.isNotEmpty() && n == target } }
-            ?: matchPreferringFunction { normalize(it.optString("name")).let { n -> n.length >= 5 && target.contains(n) } }
-            ?: matchPreferringFunction { normalize(it.optString("name")).let { n -> target.length >= 5 && n.contains(target) } }
-            ?: return null
+        val match = matchPreferringFunction { entry ->
+            aliasesOf(entry).any { it.isNotEmpty() && it == target }
+        } ?: matchPreferringFunction { entry ->
+            aliasesOf(entry).any { it.length >= 5 && target.contains(it) }
+        } ?: matchPreferringFunction { entry ->
+            aliasesOf(entry).any { target.length >= 5 && it.contains(target) }
+        } ?: return null
         return parse(match, deviceName)
+    }
+
+    /**
+     * 条目可匹配的名称集合：主名称 + `children` 里的别名。
+     *
+     * 官方白名单用 `children` 表示同一硬件的不同销售名（例如 Enco X4 的
+     * children 里放着 "OPPO Enco Bohr"），按名称回退时必须一并匹配，
+     * 否则这些型号只能靠 productId 命中。
+     */
+    private fun aliasesOf(entry: JSONObject): List<String> = buildList {
+        entry.optString("name").takeIf { it.isNotBlank() }?.let { add(normalize(it)) }
+        entry.optJSONArray("children")?.let { children ->
+            for (i in 0 until children.length()) {
+                children.optJSONObject(i)
+                    ?.optString("name")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(normalize(it)) }
+            }
+        }
     }
 
     /** 白名单中带 function 的条目优先，避免命中同名的纯占位条目。 */
@@ -217,6 +239,12 @@ object DeviceModelRegistry {
             customEqMaxPresets = func.optInt("customEqMax", 0).coerceAtLeast(0),
             hasAdaptiveAnc = ancBuild.hasAdaptive,
             isLegacyAnc = ancBuild.isLegacy,
+            hasFitDetection = flagOn(func, "fitDetection"),
+            hasHearingEnhancement = flagOn(func, "hearingEnhancement") ||
+                    flagOn(func, "hearingEnhancementNew"),
+            hasEarScan = flagOn(func, "earScan"),
+            hearingJudgeDb = func.optInt("hearingJudgeDb", 0).coerceAtLeast(0),
+            transparencyVariants = ancBuild.variants,
             ancOptions = ancBuild.options,
             ancIndexToName = ancBuild.indexToName,
             ancNameToIndex = ancBuild.nameToIndex,
@@ -275,22 +303,33 @@ object DeviceModelRegistry {
         val options: List<AncOption>,
         val indexToName: Map<Int, String>,
         val nameToIndex: Map<String, Int>,
+        val variants: List<AncOption>,
         val hasAdaptive: Boolean,
         val isLegacy: Boolean,
     )
 
-    /** modeType → 规范键名。白名单里 6 和 10 都表示自适应。 */
+    /**
+     * modeType → 规范键名。
+     *
+     * 顶层 6 是 Free2 系列的「聆听」主档；通透子档 6 另由
+     * [childModeKey] 解释成「强化人声」。顶层 10 才是自适应。
+     */
     private fun modeKey(type: Int): String = when (type) {
         1 -> AncKeys.OFF
         2 -> AncKeys.TRANSPARENCY
         3 -> AncKeys.LIGHT
         4 -> AncKeys.DEEP
         5 -> AncKeys.NC
-        6, 10 -> AncKeys.ADAPTIVE
+        6 -> AncKeys.LISTEN
         7 -> AncKeys.SMART
         8 -> AncKeys.MEDIUM
+        10 -> AncKeys.ADAPTIVE
         else -> "Mode$type"
     }
+
+    /** 子档的 modeType 需要结合父档解释：通透下的 6 是强化人声。 */
+    private fun childModeKey(parentType: Int, childType: Int): String =
+        if (parentType == 2 && childType == 6) AncKeys.VOCAL_ENHANCE else modeKey(childType)
 
     private val NOISE_LEVEL_KEYS = setOf(
         AncKeys.SMART,
@@ -310,12 +349,17 @@ object DeviceModelRegistry {
 
     private fun buildAncOptions(nrm: JSONArray?): AncBuild {
         if (nrm == null || nrm.length() == 0) {
-            return AncBuild(emptyList(), emptyMap(), emptyMap(), hasAdaptive = false, isLegacy = false)
+            return AncBuild(
+                emptyList(), emptyMap(), emptyMap(), emptyList(),
+                hasAdaptive = false, isLegacy = false,
+            )
         }
 
         val indexToName = LinkedHashMap<Int, String>()
         val nameToIndex = LinkedHashMap<String, Int>()
         val options = mutableListOf<AncOption>()
+        val variants = LinkedHashMap<String, AncOption>()
+        var listenOption: AncOption? = null
         var hasAdaptive = false
         var hasAnyChildren = false
 
@@ -340,27 +384,32 @@ object DeviceModelRegistry {
                     val child = childrenArray.optJSONObject(c) ?: continue
                     if (!child.has("protocolIndex")) continue
                     val childIndex = child.optInt("protocolIndex")
-                    val childKey = modeKey(child.optInt("modeType", type))
+                    val childKey = childModeKey(type, child.optInt("modeType", type))
                     if (childKey in NOISE_LEVEL_KEYS) {
-                        // 降噪等级（智能/轻/中/深）：作为独立可发送项登记，供等级选择器使用。
+                        // 降噪等级（智能/轻/中/深）：独立可发送项，供等级选择器使用。
                         register(childIndex, childKey)
                     } else {
-                        // 其余子档是父档的变体（如通透下的「自适应通透」）。它不是独立主档，
-                        // 位图回报要归到父档，也不能进 nameToIndex —— 否则 Enco X2/X3 这类
-                        // 只有子级自适应的机型会错误地显示出自适应开关。
-                        indexToName[childIndex] = key
+                        // 其余子档是父档的变体（通透下的标准通透 / 强化人声）。位图回报按
+                        // 子档自己的键登记，解析时再归并到「通透」主模式。
+                        indexToName[childIndex] = childKey
                     }
                     childOptions += AncOption(childKey, childIndex)
                 }
             }
 
+            // 顶层 modeType=6 是 Free2 系列的「聆听」主档：它不是四个主按钮之一，
+            // 只作为通透模式的一个变体存在。
+            if (key == AncKeys.LISTEN) {
+                indexToName[ownIndex] = AncKeys.LISTEN
+                nameToIndex[AncKeys.LISTEN] = ownIndex
+                listenOption = AncOption(AncKeys.LISTEN, ownIndex)
+                continue
+            }
+
             // 主档一律使用父级 protocolIndex 发送。子模式的索引只用于位图反查和
             // 降噪等级细分——耳机对主档（关闭/降噪/通透）只认父级的位。
-            // 这与本项目已在 Enco X3/Free4 上实测通过的 01 01 01 / 02 / 04 一致。
             register(ownIndex, key)
             nameToIndex[key] = ownIndex
-            // 只有顶层自适应才是独立主档。通透下的 Adaptive 子档已经在上面
-            // 归并到父档的位图名称中，不能因此让自适应开关显示出来。
             if (key == AncKeys.ADAPTIVE) hasAdaptive = true
 
             if (childOptions.isEmpty()) {
@@ -372,6 +421,21 @@ object DeviceModelRegistry {
                 // 有实际子模式（如降噪→智能/深度/中度/轻度）：父档可发送，子档做等级细分。
                 options += AncOption(key, ownIndex, children = childOptions)
             }
+
+            if (key == AncKeys.TRANSPARENCY) {
+                // 标准通透始终可用，发送父级位；人声变体以自身 protocolIndex 发送。
+                variants.putIfAbsent(AncKeys.TRANSPARENCY, AncOption(AncKeys.TRANSPARENCY, ownIndex))
+                childOptions.forEach { child ->
+                    if (child.key == AncKeys.TRANSPARENCY || child.key == AncKeys.VOCAL_ENHANCE) {
+                        variants.putIfAbsent(child.key, child)
+                    }
+                }
+            }
+        }
+
+        // 独立「聆听」主档只有在该机型同时具备通透父档时才作为通透变体暴露。
+        if (variants.isNotEmpty()) {
+            listenOption?.let { variants.putIfAbsent(AncKeys.LISTEN, it) }
         }
 
         // 无子模式且 NC 落在 idx0：老机型排布，降噪/通透与现代机型相反。
@@ -387,7 +451,10 @@ object DeviceModelRegistry {
                 else option.copy(children = option.children.sortedBy { mainRank(it.key) })
             }
 
-        return AncBuild(sorted, indexToName, nameToIndex, hasAdaptive, isLegacy)
+        val sortedVariants = variants.values.toList()
+            .sortedWith(compareBy({ if (it.key == AncKeys.TRANSPARENCY) 0 else 1 }, { it.key }))
+
+        return AncBuild(sorted, indexToName, nameToIndex, sortedVariants, hasAdaptive, isLegacy)
     }
 
     /** 手动选型列表项。 */
