@@ -56,14 +56,15 @@ object FocusIslandUtil {
             val moduleContext = context.createPackageContext(
                 MODULE_PACKAGE, Context.CONTEXT_IGNORE_SECURITY
             )
-            // 优先用用户自定义的岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
+            // 优先用用户自定义/欢律在线岛图（经 ContentProvider 跨进程读取）；缺省回退模块内置资源。
             // 使用编译期资源 ID。release 的 resopt 会重命名资源 entry，按字符串
             // getIdentifier("img_left") / getIdentifier("img_right") 会得到 0；编译期引用会随资源表一起重写。
             val leftBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_LEFT)
                 ?: BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_left)
             val rightBitmap = loadCustomBitmap(context, PodImageSlot.ISLAND_RIGHT)
                 ?: BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_right)
-            val caseBitmap = BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_box)
+            val caseBitmap = loadCustomBitmap(context, PodImageSlot.BOX_IMAGE)
+                ?: BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_box)
 
             if (leftBitmap == null || rightBitmap == null || caseBitmap == null) {
                 Log.e(TAG, "Failed to decode Focus Island icon bitmaps")

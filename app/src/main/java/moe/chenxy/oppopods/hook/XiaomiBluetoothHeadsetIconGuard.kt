@@ -152,6 +152,7 @@ object XiaomiBluetoothHeadsetIconGuard : HookContext() {
         connectionReceiverContext = context.applicationContext ?: context
     }
 
+    @SuppressLint("MissingPermission")
     private fun isOppoPodConnected(context: Context?): Boolean {
         if (connectedOppoAddresses.isNotEmpty()) return true
         if (context == null) return false

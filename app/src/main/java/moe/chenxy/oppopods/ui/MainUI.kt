@@ -3,15 +3,20 @@ package moe.chenxy.oppopods.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.util.Log
-import androidx.compose.animation.AnimatedContent
+import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -19,10 +24,13 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -32,13 +40,14 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -46,14 +55,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.runtime.rememberDecoratedNavEntries
-import androidx.navigation3.ui.NavDisplay
+import kotlinx.serialization.Serializable
 import moe.chenxy.oppopods.MainActivity
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.BtLogStore
+import moe.chenxy.oppopods.pods.CalibrationCommand
+import moe.chenxy.oppopods.pods.CalibrationState
 import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.CustomButtonPosition
 import moe.chenxy.oppopods.pods.DeviceProfile
@@ -62,6 +70,7 @@ import moe.chenxy.oppopods.pods.EqDevicePreset
 import moe.chenxy.oppopods.pods.EqPreset
 import moe.chenxy.oppopods.pods.PodImageSlot
 import moe.chenxy.oppopods.pods.PodImageStore
+import moe.chenxy.oppopods.pods.OfficialArtworkStore
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.pods.RfcommConnectionMethod
 import moe.chenxy.oppopods.pods.SpatialAudioMode
@@ -73,42 +82,64 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.batteryStatusCompat
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBar
+import moe.chenxy.oppopods.ui.components.DisabledContent
+import moe.chenxy.oppopods.ui.components.PrimaryPageScaffold
+import moe.chenxy.oppopods.ui.components.SecondaryPageScaffold
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import androidx.compose.runtime.CompositionLocalProvider
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import kotlinx.serialization.json.Json
+import moe.chenxy.oppopods.pods.HearingProfile
+import moe.chenxy.oppopods.pods.HearingProfileStore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+@Serializable
 sealed interface Screen : NavKey {
-    data object Home : Screen
-    data object Settings : Screen
-    data object AdvancedSettings : Screen
-    data object Profiles : Screen
-    data object About : Screen
-    data object MoreSettings : Screen
-    data object Equalizer : Screen
-    data object Debug : Screen
-    data object DebugLog : Screen
+    @Serializable data object Home : Screen
+    @Serializable data object Theme : Screen
+    @Serializable data object AdvancedSettings : Screen
+    @Serializable data object Profiles : Screen
+    @Serializable data object About : Screen
+    @Serializable data object Equalizer : Screen
+    @Serializable data object FitTest : Screen
+    @Serializable data object Hearing : Screen
+    @Serializable data object Debug : Screen
+    @Serializable data object DebugLog : Screen
+    /** 设备选择页：从首页顶栏的「+」进入，也可以从「立刻连接」跳转。 */
+    @Serializable data object DevicePicker : Screen
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainUI(
-    themeMode: MutableState<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {}
+    themeConfig: MutableState<AppThemeConfig> = mutableStateOf(AppThemeConfig()),
+    onThemeConfigChange: (AppThemeConfig) -> Unit = {}
 ) {
-    val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val backStack = rememberNavBackStack<Screen>(Screen.Home)
     val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
@@ -220,18 +251,43 @@ fun MainUI(
         )
     }
 
+    // 未连接时展示「上一次连接过的耳机」的页面，所以地址、名称与 productId 都要持久化。
+    // 只在用户主动选中设备或设备上报 productId 时写入，避免失败目标覆盖记录。
+    val lastDeviceAddress = remember {
+        mutableStateOf(prefs.getString(OppoPodsPrefsKey.LAST_DEVICE_ADDRESS, null))
+    }
+    val lastDeviceName = remember {
+        mutableStateOf(prefs.getString(OppoPodsPrefsKey.LAST_DEVICE_NAME, null))
+    }
+    val lastProductId = remember {
+        mutableStateOf(prefs.getString(OppoPodsPrefsKey.LAST_DEVICE_PRODUCT_ID, null))
+    }
+
     // Hook 连接路径不会经过 onDeviceSelected；先按当前配置模式解析一次，连接广播
     // 到达后再按实际蓝牙名称刷新，避免旧的持久化种子配置残留可见性开关。
+    // 未连接时必须用上次连接的耳机回推能力，否则会落到 FALLBACK 配置——功能页
+    // 只剩游戏模式等少数几项，而不是这台耳机实际支持的全部功能。
     val activeProfile = remember {
-        mutableStateOf(DeviceProfileStore.resolveProfile(context, prefs))
+        mutableStateOf(
+            lastProductId.value
+                ?.let { DeviceProfileStore.profileForProductId(context, prefs, it) }
+                ?: DeviceProfileStore.resolveProfile(context, prefs, lastDeviceName.value)
+        )
     }
+    val navRailExpanded = remember { mutableStateOf(prefs.getBoolean(OppoPodsPrefsKey.NAV_RAIL_EXPANDED, false)) }
+
     val debugMode = remember { mutableStateOf(prefs.getBoolean("debug_mode", false)) }
     val loggingEnabled = remember { mutableStateOf(prefs.getBoolean("bt_logging_enabled", false)) }
     BtLogStore.isEnabled = loggingEnabled.value
     val appController = remember { AppRfcommController() }
     // 收到 0x8103 后按 productId 在内嵌白名单里精确命中并重建配置（仅自动模式生效）。
+    // 顺便持久化，供下次未连接时还原同样的能力集合。
     SideEffect {
         appController.productIdResolver = { productId ->
+            prefs.edit()
+                .putString(OppoPodsPrefsKey.LAST_DEVICE_PRODUCT_ID, productId)
+                .commit()
+            lastProductId.value = productId
             DeviceProfileStore.profileForProductId(context, prefs, productId)
                 ?.also { activeProfile.value = it }
         }
@@ -252,11 +308,21 @@ fun MainUI(
     val appDualDevice by appController.dualDevice.collectAsState()
     val appConnectedDevices by appController.connectedDevices.collectAsState()
     val appConnectedDevicesReceived by appController.connectedDevicesReceived.collectAsState()
+    val appAncVariant by appController.ancVariant.collectAsState()
+    val appDeviceColor by appController.deviceColor.collectAsState()
+    val appCalibration by appController.calibration.state.collectAsState()
+
+    val hookAncVariant = remember { mutableIntStateOf(-1) }
+    val hookDeviceColor = remember { mutableStateOf<Int?>(null) }
+    val hookCalibration = remember { mutableStateOf(CalibrationState()) }
 
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
     val isError = appConnState == AppRfcommController.ConnectionState.ERROR
     val canShowDetailPage = hookConnected.value || isStandaloneConnected
+    // 未连接时不再切到独立的设备选择页，而是继续渲染上次设备的页面并整体置灰。
+    // 连接中、连接失败时都保持置灰：进度只体现在「立刻连接」按钮上，页面不会突然亮起来。
+    val keepContentGreyed = !canShowDetailPage
 
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
@@ -288,13 +354,58 @@ fun MainUI(
     val displayDualDevice = if (isStandaloneConnected) appDualDevice else dualDevice.value
     val displayConnectedDevices = if (isStandaloneConnected) appConnectedDevices else hookConnectedDevices.value
     val displayConnectedDevicesReceived = if (isStandaloneConnected) appConnectedDevicesReceived else hookConnectedDevicesReceived.value
+    val displayAncVariant = if (isStandaloneConnected) appAncVariant else hookAncVariant.value
+    val displayDeviceColor = if (isStandaloneConnected) appDeviceColor else hookDeviceColor.value
+    val displayCalibration = if (isStandaloneConnected) appCalibration else hookCalibration.value
+
+    // 黄金听感历史：耳机只保留当前一份，多方案由手机侧按设备分开保存。
+    val hearingDeviceKey = lastDeviceAddress.value
+        ?: activeProfile.value.id.takeIf { it.isNotBlank() }
+        ?: "default"
+    val hearingProfiles = remember { mutableStateOf<List<HearingProfile>>(emptyList()) }
+    LaunchedEffect(hearingDeviceKey) {
+        hearingProfiles.value = HearingProfileStore.load(context, hearingDeviceKey)
+    }
+    LaunchedEffect(displayCalibration.savedProfile) {
+        val saved = displayCalibration.savedProfile ?: return@LaunchedEffect
+        hearingProfiles.value = HearingProfileStore.upsert(context, hearingDeviceKey, saved)
+    }
+    LaunchedEffect(displayCalibration.currentUid, displayCalibration.levels) {
+        val uid = displayCalibration.currentUid ?: return@LaunchedEffect
+        if (uid == 0 || displayCalibration.levels.size != 12) return@LaunchedEffect
+        if (hearingProfiles.value.none { it.uid == uid }) {
+            val restored = HearingProfile(
+                uid = uid,
+                name = displayCalibration.currentName.ifBlank {
+                    SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date())
+                },
+                localIndex = HearingProfileStore.nextLocalIndex(context, hearingDeviceKey),
+                version = 2,
+                levels = displayCalibration.levels,
+                savedAt = System.currentTimeMillis(),
+            )
+            hearingProfiles.value = HearingProfileStore.upsert(context, hearingDeviceKey, restored)
+        }
+    }
+
     val displayTitle = when {
         hookConnected.value -> mainTitle.value
         isStandaloneConnected -> appDeviceName
         isConnecting -> stringResource(R.string.connecting)
-        else -> ""
+        // 未连接时沿用上次连接的设备名，页面才有「同一副耳机」的连续感。
+        else -> lastDeviceName.value.orEmpty()
     }
 
+    // 连接失败：弹 toast 并把「立刻连接」按钮复位，不再整屏切到错误页。
+    // 文案在组合期解析，避免 lint 的 LocalContext 资源读取告警。
+    val connectFailedMessage = stringResource(R.string.connect_failed)
+    LaunchedEffect(isError) {
+        if (isError) {
+            Toast.makeText(context, connectFailedMessage, Toast.LENGTH_SHORT).show()
+            // disconnect() 会把状态清回 DISCONNECTED，按钮随之恢复可点。
+            appController.disconnect()
+        }
+    }
     LaunchedEffect(displayTitle) {
         if (displayTitle.isNotEmpty()) {
             mainTitle.value = displayTitle
@@ -314,6 +425,27 @@ fun MainUI(
                             4 -> NoiseControlMode.ADAPTIVE
                             else -> NoiseControlMode.OFF
                         }
+                        hookAncVariant.value = p1.getIntExtra(
+                            OppoPodsAction.EXTRA_ANC_VARIANT, -1,
+                        )
+                    }
+
+                    OppoPodsAction.ACTION_PODS_ANC_VARIANT_CHANGED -> {
+                        hookAncVariant.value = p1.getIntExtra(
+                            OppoPodsAction.EXTRA_ANC_VARIANT, -1,
+                        )
+                    }
+
+                    OppoPodsAction.ACTION_PODS_COLOR_CHANGED -> {
+                        hookDeviceColor.value = p1.getIntExtra(
+                            OppoPodsAction.EXTRA_DEVICE_COLOR, -1,
+                        ).takeIf { it >= 0 }
+                    }
+
+                    OppoPodsAction.ACTION_PODS_CALIBRATION_STATE -> {
+                        p1.getStringExtra(OppoPodsAction.EXTRA_CALIBRATION_JSON)
+                            ?.let { DeviceProfileStore.parseCalibration(it) }
+                            ?.let { hookCalibration.value = it }
                     }
 
                     OppoPodsAction.ACTION_PODS_BATTERY_CHANGED -> {
@@ -384,10 +516,24 @@ fun MainUI(
 
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
+                        val deviceAddress = p1.getStringExtra("device_address")
                         mainTitle.value = deviceName ?: ""
                         hookEqPresetId.value = -1
                         hookDeviceEqPresets.value = emptyList()
                         if (!deviceName.isNullOrBlank()) {
+                            // 记录最后一次连接的耳机：未连接时用它还原页面与完整能力，
+                            // 「立刻连接」也直接连它，不再跳选择页。
+                            val displayName = deviceName
+                            prefs.edit().apply {
+                                putString(OppoPodsPrefsKey.LAST_DEVICE_NAME, displayName)
+                                if (!deviceAddress.isNullOrBlank()) {
+                                    putString(OppoPodsPrefsKey.LAST_DEVICE_ADDRESS, deviceAddress)
+                                }
+                            }.commit()
+                            lastDeviceName.value = displayName
+                            if (!deviceAddress.isNullOrBlank()) {
+                                lastDeviceAddress.value = deviceAddress
+                            }
                             runCatching {
                                 DeviceProfileStore.resolveProfile(context, prefs, deviceName)
                             }.onSuccess { activeProfile.value = it }
@@ -401,6 +547,9 @@ fun MainUI(
                         hookConnected.value = false
                         hookEqPresetId.value = -1
                         hookDeviceEqPresets.value = emptyList()
+                        hookAncVariant.value = -1
+                        hookDeviceColor.value = null
+                        hookCalibration.value = CalibrationState()
                         if (p0 is MainActivity) {
                             p0.finish()
                         }
@@ -420,6 +569,9 @@ fun MainUI(
     DisposableEffect(Unit) {
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_ANC_VARIANT_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_COLOR_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_CALIBRATION_STATE)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_EQ_PRESET_CHANGED)
@@ -458,6 +610,13 @@ fun MainUI(
             return
         }
         ancMode.value = mode
+        if (mode == NoiseControlMode.TRANSPARENCY) {
+            hookAncVariant.value = activeProfile.value.transparencyVariants
+                .firstOrNull { it.key == moe.chenxy.oppopods.pods.AncKeys.TRANSPARENCY }
+                ?.protocolIndex ?: -1
+        } else {
+            hookAncVariant.value = -1
+        }
         val status = when (mode) {
             NoiseControlMode.OFF -> 1
             NoiseControlMode.NOISE_CANCELLATION -> 2
@@ -469,6 +628,73 @@ fun MainUI(
             setPackage("com.android.bluetooth")
             context.sendBroadcast(this)
         }
+    }
+
+    fun setAncVariant(index: Int) {
+        if (isStandaloneConnected) {
+            appController.setAncVariant(index)
+            return
+        }
+        hookAncVariant.value = index
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_ANC_VARIANT_SELECT).apply {
+            putExtra(OppoPodsAction.EXTRA_ANC_VARIANT, index)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
+    }
+
+    fun encodeHearingProfile(profile: HearingProfile): String =
+        Json.encodeToString(HearingProfile.serializer(), profile)
+
+    fun decodeHearingProfile(json: String): HearingProfile? = runCatching {
+        Json.decodeFromString(HearingProfile.serializer(), json)
+    }.getOrNull()
+
+    fun dispatchCalibration(
+        command: String,
+        heard: Boolean = false,
+        level: Int = 5,
+        released: Boolean = true,
+        enabled: Boolean = false,
+        name: String = "",
+        preview: Boolean = false,
+        profileJson: String = "",
+    ) {
+        if (isStandaloneConnected) {
+            val engine = appController.calibration
+            when (command) {
+                CalibrationCommand.START_FIT -> engine.startFit()
+                CalibrationCommand.START_HEARING -> engine.startHearing()
+                CalibrationCommand.ANSWER -> engine.answer(heard)
+                CalibrationCommand.SET_LEVEL -> engine.setLevel(level, released)
+                CalibrationCommand.NEXT -> engine.next()
+                CalibrationCommand.PREVIOUS -> engine.previous()
+                CalibrationCommand.RESUME -> engine.resume()
+                CalibrationCommand.PAUSE -> engine.pause()
+                CalibrationCommand.SAVE -> engine.save(name)
+                CalibrationCommand.CANCEL -> engine.cancel()
+                CalibrationCommand.SET_ENABLED -> engine.setHearingEnabled(enabled)
+                CalibrationCommand.PREVIEW -> engine.setPreview(preview)
+                CalibrationCommand.REFRESH -> engine.refresh()
+                CalibrationCommand.APPLY_PROFILE -> {
+                    val profile = decodeHearingProfile(profileJson)
+                    if (profile != null) engine.applyProfile(profile)
+                }
+            }
+            return
+        }
+        context.sendBroadcast(Intent(OppoPodsAction.ACTION_CALIBRATION_COMMAND).apply {
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_COMMAND, command)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_HEARD, heard)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_LEVEL, level)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_RELEASED, released)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_ENABLED, enabled)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_NAME, name)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_PREVIEW, preview)
+            putExtra(OppoPodsAction.EXTRA_CALIBRATION_PROFILE, profileJson)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
     }
 
     fun setGameMode(enabled: Boolean) {
@@ -628,11 +854,66 @@ fun MainUI(
             DeviceProfileStore.resolveProfile(context, prefs, deviceName)
         }.getOrElse { activeProfile.value }
         activeProfile.value = resolved
+        // 记录「上一次连接的耳机」，未连接时用它渲染对应型号的页面。
+        val displayName = deviceName?.takeIf { it.isNotBlank() } ?: device.address
+        prefs.edit()
+            .putString(OppoPodsPrefsKey.LAST_DEVICE_ADDRESS, device.address)
+            .putString(OppoPodsPrefsKey.LAST_DEVICE_NAME, displayName)
+            .commit()
+        lastDeviceAddress.value = device.address
+        lastDeviceName.value = displayName
         appController.connect(
             device = device,
             connectionMethod = rfcommConnectionMethod.value,
             profile = resolved
         )
+    }
+
+    /** 断开当前耳机：独立连接直接关闭，hook 模式交给蓝牙进程执行。 */
+    fun disconnectPods() {
+        if (isStandaloneConnected) {
+            appController.disconnect()
+        } else if (hookConnected.value) {
+            context.sendBroadcast(
+                Intent(OppoPodsAction.ACTION_PODS_DISCONNECT_REQUEST).apply {
+                    setPackage("com.android.bluetooth")
+                    addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                }
+            )
+        }
+    }
+    /**
+     * 首页「立刻连接」：直接连记录下来的那台耳机。
+     *
+     * 只有确实没有记录（或缺少蓝牙权限）时才退回选择页——正常路径不应该让
+     * 用户为此多点一次。
+     */
+    fun connectLastDevice() {
+        val adapter = runCatching {
+            context.getSystemService(BluetoothManager::class.java)?.adapter
+        }.getOrNull()
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        if (adapter == null || !granted) {
+            backStack.add(Screen.DevicePicker)
+            return
+        }
+        // 优先用记录下来的地址；没有记录时退而取已配对里第一台 OPPO 耳机。
+        val address = lastDeviceAddress.value
+            ?.takeIf { BluetoothAdapter.checkBluetoothAddress(it) }
+            ?: runCatching {
+                adapter.bondedDevices
+                    ?.firstOrNull { it.name?.contains("oppo", ignoreCase = true) == true }
+                    ?.address
+            }.getOrNull()
+        val device = address?.let { runCatching { adapter.getRemoteDevice(it) }.getOrNull() }
+        if (device != null) {
+            onDeviceSelected(device)
+        } else {
+            backStack.add(Screen.DevicePicker)
+        }
     }
 
     fun refreshStatus() {
@@ -730,25 +1011,56 @@ fun MainUI(
         }
     }
 
-    // Each entry has its own Scaffold+TopAppBar so the full page transitions together
-    val entryProvider = entryProvider<Screen> {
+    // Each entry owns its Scaffold + top bar, so page transitions carry the whole page.
+    NavDisplay(
+        backStack = backStack,
+        onBack = {
+            if (backStack.size > 1) {
+                backStack.removeLast()
+            } else {
+                (context as? Activity)?.finish()
+            }
+        },
+    ) {
         entry<Screen.Home> {
-            val homeTitle = mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
-            val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
+            val homeTitle = mainTitle.value
+                .ifEmpty { lastDeviceName.value.orEmpty() }
+                .ifEmpty { stringResource(R.string.app_name) }
+            val homeImageFile = remember {
+                PodImageStore.resolvedFile(context, PodImageSlot.HOME_IMAGE)
+            }
+            val modelFile = remember { OfficialArtworkStore.modelFile(context) }
+            // Miuix 的按压缩小反馈：按下整体缩到 96%，松手弹回。
+            val connectInteraction = remember { MutableInteractionSource() }
+            val connectPressed by connectInteraction.collectIsPressedAsState()
+            val connectScale = animateFloatAsState(
+                targetValue = if (connectPressed) 0.96f else 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                label = "connectPressScale",
+            )
+            var showFitTestSheet by remember { mutableStateOf(false) }
+            MainShell(
+                floatingNavbar = themeConfig.value.floatingNavbar,
+                liquidGlass = themeConfig.value.liquidGlass,
+                blurEnabled = themeConfig.value.blurEnabled,
+                railExpanded = navRailExpanded.value,
+                onRailExpandedChange = { expanded ->
+                    navRailExpanded.value = expanded
+                    prefs.edit()
+                        .putBoolean(OppoPodsPrefsKey.NAV_RAIL_EXPANDED, expanded)
+                        .apply()
+                },
+                homeContent = { extraBottom, isActive ->
+                    PrimaryPageScaffold(
                         title = homeTitle,
-                        largeTitle = homeTitle,
-                        scrollBehavior = topAppBarScrollBehavior,
+                        blurEnabled = themeConfig.value.blurEnabled,
+                        extraBottomPadding = extraBottom,
                         navigationIcon = {
-                            IconButton(
-                                onClick = { (context as? Activity)?.finish() },
-                            ) {
+                            // 顶栏左侧「+」：随时可以重新挑一台耳机。
+                            IconButton(onClick = { backStack.add(Screen.DevicePicker) }) {
                                 Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
+                                    imageVector = MiuixIcons.Add,
+                                    contentDescription = stringResource(R.string.add_device),
                                 )
                             }
                         },
@@ -757,123 +1069,274 @@ fun MainUI(
                                 IconButton(onClick = { refreshStatus() }) {
                                     Icon(
                                         imageVector = MiuixIcons.Refresh,
-                                        contentDescription = "Refresh"
+                                        contentDescription = stringResource(R.string.refresh),
                                     )
-                                }
                             }
-                            IconButton(
-                                onClick = { backStack.add(Screen.Settings) },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Settings,
-                                    contentDescription = "Settings"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
-                AnimatedContent(
-                    targetState = when {
-                        canShowDetailPage -> "detail"
-                        isConnecting -> "connecting"
-                        isError -> "error"
-                        else -> "picker"
-                    },
-                    label = "MainPageAnim"
-                ) { state ->
-                    when (state) {
-                        "detail" -> PodDetailPage(
-                            modifier = Modifier
-                                .overScrollVertical()
-                                .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                            contentPadding = padding,
-                            batteryParams = displayBattery,
-                            ancMode = displayAnc,
-                            onAncModeChange = { setAncMode(it) },
-                            gameMode = displayGameMode,
-                            onGameModeChange = { setGameMode(it) },
-                            eqVisible = activeProfile.value.eqPresets.isNotEmpty() ||
-                                    activeProfile.value.customEqVisible,
-                            eqCurrentName = displayEqCurrentName,
-                            onOpenEqualizer = { backStack.add(Screen.Equalizer) },
-                            spatialAudioMode = displaySpatialAudioMode,
-                            onSpatialAudioModeChange = { setSpatialAudioMode(it) },
-                            spatialAudioVisible = activeProfile.value.spatialAudioVisible,
-                            spatialSound = displaySpatialSound,
-                            onSpatialSoundChange = { setSpatialSound(it) },
-                            spatialSoundVisible = activeProfile.value.spatialSoundVisible,
-                            adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
-                            gameModeVisible = activeProfile.value.gameModeVisible,
-                            noiseLevelVisible = activeProfile.value.noiseLevelVisible,
-                            noiseLevel = displayNoiseLevel,
-                            smartAncLevel = displaySmartAncLevel,
-                            onNoiseLevelChange = { setNoiseLevel(it) },
-                            homeImageFile = PodImageStore.customFile(context, PodImageSlot.HOME_IMAGE),
-                            onOpenMoreSettings = { backStack.add(Screen.MoreSettings) }
-                        )
-                        "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
-                        "error" -> Box(Modifier.padding(padding).fillMaxSize()) { ErrorPage(onRetry = { appController.disconnect() }) }
-                        else -> Box(Modifier.padding(padding).fillMaxSize()) { DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) }) }
-                    }
-                }
-            }
-        }
-        entry<Screen.Equalizer> {
-            val equalizerScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-            var isEqEditing by remember { mutableStateOf(false) }
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.sound_effects),
-                        largeTitle = stringResource(R.string.sound_effects),
-                        scrollBehavior = equalizerScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = {
-                                    if (isEqEditing) isEqEditing = false
-                                    else backStack.removeLast()
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
                             }
                         },
-                        actions = {
-                            if (activeProfile.value.customEqVisible) {
-                                if (isEqEditing) {
-                                    TextButton(
-                                        text = stringResource(R.string.done),
-                                        onClick = { isEqEditing = false },
-                                    )
-                                } else {
-                                    val editEntry = DropdownEntry(
-                                        items = listOf(
-                                            DropdownItem(
-                                                text = stringResource(R.string.eq_edit),
-                                                onClick = { isEqEditing = true },
-                                            )
+                    ) { padding, behavior ->
+                        Box(Modifier.fillMaxSize()) {
+                            // 未连接 / 连接中整页置灰且不可操作，但保留上次设备的布局。
+                            DisabledContent(enabled = !keepContentGreyed) {
+                                PodDetailPage(
+                                    modifier = Modifier
+                                        .overScrollVertical()
+                                        .nestedScroll(behavior.nestedScrollConnection),
+                                    contentPadding = padding,
+                                    batteryParams = displayBattery,
+                                    ancMode = displayAnc,
+                                    onAncModeChange = { setAncMode(it) },
+                                    adaptiveModeEnabled = activeProfile.value.adaptiveVisible,
+                                    noiseLevelVisible = activeProfile.value.noiseLevelVisible,
+                                    noiseLevel = displayNoiseLevel,
+                                    smartAncLevel = displaySmartAncLevel,
+                                    onNoiseLevelChange = { setNoiseLevel(it) },
+                                    homeImageFile = homeImageFile,
+                                    modelFile = modelFile,
+                                    isActive = isActive,
+                                    autoRotate = canShowDetailPage,
+                                    transparencyVariants = activeProfile.value.transparencyVariants,
+                                    ancVariant = displayAncVariant,
+                                    onAncVariantChange = { setAncVariant(it) },
+                                    onDisconnect = if (canShowDetailPage) {
+                                        { disconnectPods() }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                }
+
+                            if (keepContentGreyed) {
+                                // 页面底部（悬浮底栏之上）的主操作。
+                                Button(
+                                    // 连接中不再响应点击，但保持同一个蓝色按钮：
+                                    // 进度直接画在按钮上，替代按钮文字。
+                                    onClick = { if (!isConnecting) connectLastDevice() },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 24.dp)
+                                        .padding(
+                                            bottom = padding.calculateBottomPadding() + 16.dp
                                         )
-                                    )
-                                    OverlayIconDropdownMenu(entry = editEntry) {
-                                        Icon(
-                                            imageVector = MiuixIcons.More,
-                                            contentDescription = stringResource(R.string.eq_edit)
+                                        .fillMaxWidth()
+                                        // 按压缩小作用在整个按钮上（含底色），
+                                        // 不能只靠 indication——那只缩内容层。
+                                        .graphicsLayer {
+                                            scaleX = connectScale.value
+                                            scaleY = connectScale.value
+                                        },
+                                    // 默认按钮是次级容器色，这里需要强调蓝的主按钮。
+                                    colors = ButtonDefaults.buttonColorsPrimary(),
+                                    interactionSource = connectInteraction,
+                                ) {
+                                    if (isConnecting) {
+                                        InfiniteProgressIndicator(
+                                            color = Color.White,
+                                            size = 22.dp,
                                         )
+                                    } else {
+                                        Text(text = stringResource(R.string.connect_now))
                                     }
                                 }
                             }
                         }
+                    }
+                },
+                featuresContent = { extraBottom ->
+                    PrimaryPageScaffold(
+                        title = stringResource(R.string.tab_features),
+                        blurEnabled = themeConfig.value.blurEnabled,
+                        extraBottomPadding = extraBottom,
+                    ) { padding, behavior ->
+                        DisabledContent(enabled = !keepContentGreyed) {
+                            FeaturesPage(
+                                modifier = Modifier
+                                    .overScrollVertical()
+                                    .nestedScroll(behavior.nestedScrollConnection),
+                                contentPadding = padding,
+                                gameMode = displayGameMode,
+                                onGameModeChange = { setGameMode(it) },
+                                gameModeVisible = activeProfile.value.gameModeVisible,
+                                eqVisible = activeProfile.value.eqPresets.isNotEmpty() ||
+                                        activeProfile.value.customEqVisible,
+                                eqTitle = if (activeProfile.value.eqPresets.any { it.tag == 3 }) {
+                                    stringResource(R.string.eq_master_tuning)
+                                } else {
+                                    stringResource(R.string.sound_effects)
+                                },
+                                eqCurrentName = displayEqCurrentName,
+                                onOpenEqualizer = { backStack.add(Screen.Equalizer) },
+                                spatialAudioMode = displaySpatialAudioMode,
+                                onSpatialAudioModeChange = { setSpatialAudioMode(it) },
+                                spatialAudioVisible = activeProfile.value.spatialAudioVisible,
+                                spatialSound = displaySpatialSound,
+                                onSpatialSoundChange = { setSpatialSound(it) },
+                                spatialSoundVisible = activeProfile.value.spatialSoundVisible,
+                                fitDetectionVisible = activeProfile.value.fitDetectionVisible,
+                                hearingEnhancementVisible = activeProfile.value.hearingEnhancementVisible,
+                                hearingName = displayCalibration.currentName,
+                                onOpenFitTest = { showFitTestSheet = true },
+                                onOpenHearing = { backStack.add(Screen.Hearing) },
+                                autoPlayPauseVisible = activeProfile.value.autoPlayPauseVisible,
+                                autoPlayPause = displayAutoPlayPause,
+                                onAutoPlayPauseChange = { setAutoPlayPause(it) },
+                                dualDeviceVisible = activeProfile.value.dualDeviceVisible,
+                                dualDevice = displayDualDevice,
+                                onDualDeviceChange = { setDualDevice(it) },
+                                connectedDevicesVisible = activeProfile.value.connectedDevicesVisible,
+                                connectedDevices = displayConnectedDevices,
+                                connectedDevicesReceived = displayConnectedDevicesReceived,
+                            )
+                        }
+
+                        FitTestSheet(
+                            show = showFitTestSheet,
+                            onDismissRequest = {
+                                if (displayCalibration.isBusy) {
+                                    dispatchCalibration(CalibrationCommand.CANCEL)
+                                }
+                                showFitTestSheet = false
+                            },
+                            state = displayCalibration,
+                            supported = activeProfile.value.fitDetectionVisible,
+                            onStart = { dispatchCalibration(CalibrationCommand.START_FIT) },
+                            onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
+                        )
+                    }
+                },
+                settingsContent = { extraBottom ->
+                    PrimaryPageScaffold(
+                        title = stringResource(R.string.settings),
+                        blurEnabled = themeConfig.value.blurEnabled,
+                        extraBottomPadding = extraBottom,
+                    ) { padding, behavior ->
+                    SettingsPage(
+                        modifier = Modifier
+                            .overScrollVertical()
+                            .nestedScroll(behavior.nestedScrollConnection),
+                        contentPadding = padding,
+                        onOpenTheme = { backStack.add(Screen.Theme) },
+                        showConnectionBatteryIsland = showConnectionBatteryIsland,
+                        onShowConnectionBatteryIslandChange = {
+                            showConnectionBatteryIsland.value = it
+                            prefs.edit()
+                                .putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND, it)
+                                .commit()
+                            broadcastNotificationSettings(
+                                it,
+                                temporaryBatteryIslandDurationSeconds.value,
+                                showConnectionPopup.value,
+                                connectionPopupDismissSeconds.value,
+                                showConnectionNotification.value,
+                                notificationIslandStyle.value
+                            )
+                        },
+                        temporaryBatteryIslandDurationSeconds = temporaryBatteryIslandDurationSeconds,
+                        onTemporaryBatteryIslandDurationSecondsChange = {
+                            temporaryBatteryIslandDurationSeconds.value = it
+                            prefs.edit()
+                                .putInt(OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS, it)
+                                .commit()
+                            broadcastNotificationSettings(
+                                showConnectionBatteryIsland.value,
+                                it,
+                                showConnectionPopup.value,
+                                connectionPopupDismissSeconds.value,
+                                showConnectionNotification.value,
+                                notificationIslandStyle.value
+                            )
+                        },
+                        showConnectionNotification = showConnectionNotification,
+                        onShowConnectionNotificationChange = {
+                            showConnectionNotification.value = it
+                            prefs.edit()
+                                .putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, it)
+                                .commit()
+                            broadcastNotificationSettings(
+                                showConnectionBatteryIsland.value,
+                                temporaryBatteryIslandDurationSeconds.value,
+                                showConnectionPopup.value,
+                                connectionPopupDismissSeconds.value,
+                                it,
+                                notificationIslandStyle.value
+                            )
+                        },
+                        notificationIslandStyle = notificationIslandStyle,
+                        onNotificationIslandStyleChange = {
+                            notificationIslandStyle.value = it
+                            prefs.edit()
+                                .putBoolean(OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE, it)
+                                .commit()
+                            broadcastNotificationSettings(
+                                showConnectionBatteryIsland.value,
+                                temporaryBatteryIslandDurationSeconds.value,
+                                showConnectionPopup.value,
+                                connectionPopupDismissSeconds.value,
+                                showConnectionNotification.value,
+                                it
+                            )
+                        },
+                        showHeadsetStatusBarIcon = showHeadsetStatusBarIcon,
+                        onShowHeadsetStatusBarIconChange = {
+                            showHeadsetStatusBarIcon.value = it
+                            prefs.edit()
+                                .putBoolean(OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON, it)
+                                .commit()
+                            broadcastNotificationSettings(
+                                showConnectionBatteryIsland.value,
+                                temporaryBatteryIslandDurationSeconds.value,
+                                showConnectionPopup.value,
+                                connectionPopupDismissSeconds.value,
+                                showConnectionNotification.value,
+                                notificationIslandStyle.value
+                            )
+                        },
+                        onOpenAdvancedSettings = { backStack.add(Screen.AdvancedSettings) },
+                        onOpenAbout = { backStack.add(Screen.About) },
+                        onOpenProfiles = { backStack.add(Screen.Profiles) },
+                        debugMode = debugMode.value,
+                        onOpenDebug = { backStack.add(Screen.Debug) }
                     )
-                }
-            ) { padding ->
+                    }
+                },
+            )
+        }
+        entry<Screen.DevicePicker> {
+            SecondaryPageScaffold(
+                title = stringResource(R.string.select_device_title),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
+                DevicePickerPage(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = padding,
+                    scrollBehavior = behavior,
+                    // 已连接时标「当前连接」，否则退回「上次连接」。
+                    connectedAddress = if (canShowDetailPage) lastDeviceAddress.value else null,
+                    lastConnectedAddress = lastDeviceAddress.value,
+                    onDeviceSelected = {
+                        onDeviceSelected(it)
+                        // 选完直接回到主页面，避免用户再退一次。
+                        if (backStack.size > 1) backStack.removeLast()
+                    },
+                )
+            }
+        }
+        entry<Screen.Equalizer> {
+            val isDynaudio = activeProfile.value.eqPresets.any { it.tag == 3 }
+            val pageTitle = if (isDynaudio) {
+                stringResource(R.string.eq_master_tuning)
+            } else {
+                stringResource(R.string.sound_effects)
+            }
+
+            SecondaryPageScaffold(
+                title = pageTitle,
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
                 EqualizerPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(equalizerScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
                     builtInPresets = activeProfile.value.eqPresets,
                     devicePresets = displayEqDevicePresets,
@@ -881,7 +1344,6 @@ fun MainUI(
                     customEqVisible = activeProfile.value.customEqVisible,
                     customEqFrequencies = activeProfile.value.customEqFrequencies,
                     customEqMaxPresets = activeProfile.value.customEqMaxPresets,
-                    isEditing = isEqEditing,
                     onSelectPreset = { setEqPreset(it) },
                     onOpenCustomEq = { preset -> setEqPreset(preset.id) },
                     onSavePreset = { id, name, frequencies, gains, minValue, maxValue ->
@@ -891,147 +1353,111 @@ fun MainUI(
                 )
             }
         }
-        entry<Screen.Settings> {
-            val settingsScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        entry<Screen.FitTest> {
+            DisposableEffect(Unit) {
+                onDispose { dispatchCalibration(CalibrationCommand.CANCEL) }
+            }
 
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.settings),
-                        largeTitle = stringResource(R.string.settings),
-                        scrollBehavior = settingsScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
-                SettingsPage(
+            SecondaryPageScaffold(
+                title = stringResource(R.string.fit_detection_title),
+                onBack = {
+                    if (displayCalibration.isBusy) {
+                        dispatchCalibration(CalibrationCommand.CANCEL)
+                    }
+                    backStack.removeLast()
+                },
+            ) { padding, behavior ->
+                FitTestPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(settingsScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
-                    themeMode = themeMode,
-                    onThemeModeChange = onThemeModeChange,
-                    showConnectionBatteryIsland = showConnectionBatteryIsland,
-                    onShowConnectionBatteryIslandChange = {
-                        showConnectionBatteryIsland.value = it
-                        prefs.edit()
-                            .putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_BATTERY_ISLAND, it)
-                            .commit()
-                        broadcastNotificationSettings(
-                            it,
-                            temporaryBatteryIslandDurationSeconds.value,
-                            showConnectionPopup.value,
-                            connectionPopupDismissSeconds.value,
-                            showConnectionNotification.value,
-                            notificationIslandStyle.value
+                    state = displayCalibration,
+                    supported = activeProfile.value.fitDetectionVisible,
+                    onStart = { dispatchCalibration(CalibrationCommand.START_FIT) },
+                    onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
+                )
+            }
+        }
+        entry<Screen.Hearing> {
+            LaunchedEffect(Unit) {
+                dispatchCalibration(CalibrationCommand.REFRESH)
+            }
+
+            DisposableEffect(Unit) {
+                onDispose { dispatchCalibration(CalibrationCommand.CANCEL) }
+            }
+
+            SecondaryPageScaffold(
+                title = stringResource(R.string.hearing_title),
+                onBack = {
+                    if (displayCalibration.isBusy) {
+                        dispatchCalibration(CalibrationCommand.CANCEL)
+                    }
+                    backStack.removeLast()
+                },
+            ) { padding, behavior ->
+                HearingPage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(behavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    state = displayCalibration,
+                    supported = activeProfile.value.hearingEnhancementVisible,
+                    onStart = { dispatchCalibration(CalibrationCommand.START_HEARING) },
+                    onAnswer = { dispatchCalibration(CalibrationCommand.ANSWER, heard = it) },
+                    onLevel = { level, released ->
+                        dispatchCalibration(
+                            CalibrationCommand.SET_LEVEL,
+                            level = level,
+                            released = released,
                         )
                     },
-                    temporaryBatteryIslandDurationSeconds = temporaryBatteryIslandDurationSeconds,
-                    onTemporaryBatteryIslandDurationSecondsChange = {
-                        temporaryBatteryIslandDurationSeconds.value = it
-                        prefs.edit()
-                            .putInt(OppoPodsPrefsKey.TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS, it)
-                            .commit()
-                        broadcastNotificationSettings(
-                            showConnectionBatteryIsland.value,
-                            it,
-                            showConnectionPopup.value,
-                            connectionPopupDismissSeconds.value,
-                            showConnectionNotification.value,
-                            notificationIslandStyle.value
-                        )
+                    onNext = { dispatchCalibration(CalibrationCommand.NEXT) },
+                    onPrevious = { dispatchCalibration(CalibrationCommand.PREVIOUS) },
+                    onSave = { dispatchCalibration(CalibrationCommand.SAVE, name = it) },
+                    onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
+                    onEnabledChange = {
+                        dispatchCalibration(CalibrationCommand.SET_ENABLED, enabled = it)
                     },
-                    showConnectionNotification = showConnectionNotification,
-                    onShowConnectionNotificationChange = {
-                        showConnectionNotification.value = it
-                        prefs.edit()
-                            .putBoolean(OppoPodsPrefsKey.SHOW_CONNECTION_NOTIFICATION, it)
-                            .commit()
-                        broadcastNotificationSettings(
-                            showConnectionBatteryIsland.value,
-                            temporaryBatteryIslandDurationSeconds.value,
-                            showConnectionPopup.value,
-                            connectionPopupDismissSeconds.value,
-                            it,
-                            notificationIslandStyle.value
-                        )
+                    onPreview = {
+                        dispatchCalibration(CalibrationCommand.PREVIEW, preview = it)
                     },
-                    notificationIslandStyle = notificationIslandStyle,
-                    onNotificationIslandStyleChange = {
-                        notificationIslandStyle.value = it
-                        prefs.edit()
-                            .putBoolean(OppoPodsPrefsKey.NOTIFICATION_ISLAND_STYLE, it)
-                            .commit()
-                        broadcastNotificationSettings(
-                            showConnectionBatteryIsland.value,
-                            temporaryBatteryIslandDurationSeconds.value,
-                            showConnectionPopup.value,
-                            connectionPopupDismissSeconds.value,
-                            showConnectionNotification.value,
-                            it
-                        )
+                    profiles = hearingProfiles.value,
+                    requiresEarScan = activeProfile.value.earScanVisible,
+                    onSelectProfile = { profile ->
+                        // null = 关闭；其余按本机历史把数据重新写回耳机。
+                        if (profile == null) {
+                            dispatchCalibration(CalibrationCommand.SET_ENABLED, enabled = false)
+                        } else {
+                            dispatchCalibration(
+                                CalibrationCommand.APPLY_PROFILE,
+                                profileJson = encodeHearingProfile(profile),
+                            )
+                        }
                     },
-                    showHeadsetStatusBarIcon = showHeadsetStatusBarIcon,
-                    onShowHeadsetStatusBarIconChange = {
-                        showHeadsetStatusBarIcon.value = it
-                        prefs.edit()
-                            .putBoolean(OppoPodsPrefsKey.SHOW_HEADSET_STATUS_BAR_ICON, it)
-                            .commit()
-                        broadcastNotificationSettings(
-                            showConnectionBatteryIsland.value,
-                            temporaryBatteryIslandDurationSeconds.value,
-                            showConnectionPopup.value,
-                            connectionPopupDismissSeconds.value,
-                            showConnectionNotification.value,
-                            notificationIslandStyle.value
-                        )
+                    onDeleteProfile = { profile ->
+                        hearingProfiles.value = HearingProfileStore.remove(context, hearingDeviceKey, profile.uid)
                     },
-                    onOpenAdvancedSettings = { backStack.add(Screen.AdvancedSettings) },
-                    onOpenAbout = { backStack.add(Screen.About) },
-                    onOpenProfiles = { backStack.add(Screen.Profiles) },
-                    debugMode = debugMode.value,
-                    onOpenDebug = { backStack.add(Screen.Debug) }
+                    onRenameProfile = { profile, newName ->
+                        hearingProfiles.value = HearingProfileStore.upsert(context, hearingDeviceKey, profile.copy(name = newName))
+                    },
                 )
             }
         }
         entry<Screen.Profiles> {
-            val profilesScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.device_profiles),
-                        largeTitle = stringResource(R.string.device_profiles),
-                        scrollBehavior = profilesScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
+            SecondaryPageScaffold(
+                title = stringResource(R.string.device_profiles),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
                 ProfilesPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(profilesScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
                     prefs = prefs,
                     activeProfile = activeProfile.value,
+                    deviceColor = displayDeviceColor,
                     onActiveProfileChanged = { p ->
                         activeProfile.value = p
                         appController.setProfile(p)
@@ -1041,31 +1467,14 @@ fun MainUI(
             }
         }
         entry<Screen.AdvancedSettings> {
-            val advancedScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.advanced_settings),
-                        largeTitle = stringResource(R.string.advanced_settings),
-                        scrollBehavior = advancedScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
+            SecondaryPageScaffold(
+                title = stringResource(R.string.advanced_settings),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
                 AdvancedSettingsPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(advancedScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
                     openHeyTap = openHeyTap,
                     onOpenHeyTapChange = {
@@ -1139,6 +1548,21 @@ fun MainUI(
                 )
             }
         }
+        entry<Screen.Theme> {
+            SecondaryPageScaffold(
+                title = stringResource(R.string.theme_title),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
+                ThemePage(
+                    modifier = Modifier
+                        .overScrollVertical()
+                        .nestedScroll(behavior.nestedScrollConnection),
+                    contentPadding = padding,
+                    config = themeConfig.value,
+                    onConfigChange = onThemeConfigChange,
+                )
+            }
+        }
         entry<Screen.About> {
             AboutPage(
                 onBack = { backStack.removeLast() },
@@ -1149,71 +1573,15 @@ fun MainUI(
                 }
             )
         }
-        entry<Screen.MoreSettings> {
-            val moreSettingsScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.more_settings),
-                        largeTitle = stringResource(R.string.more_settings),
-                        scrollBehavior = moreSettingsScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
-                MoreSettingsPage(
-                    modifier = Modifier
-                        .overScrollVertical()
-                        .nestedScroll(moreSettingsScrollBehavior.nestedScrollConnection),
-                    contentPadding = padding,
-                    autoPlayPauseVisible = activeProfile.value.autoPlayPauseVisible,
-                    autoPlayPause = displayAutoPlayPause,
-                    onAutoPlayPauseChange = { setAutoPlayPause(it) },
-                    dualDeviceVisible = activeProfile.value.dualDeviceVisible,
-                    dualDevice = displayDualDevice,
-                    onDualDeviceChange = { setDualDevice(it) },
-                    connectedDevicesVisible = activeProfile.value.connectedDevicesVisible,
-                    connectedDevices = displayConnectedDevices,
-                    connectedDevicesReceived = displayConnectedDevicesReceived
-                )
-            }
-        }
         entry<Screen.Debug> {
-            val debugScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.debug_mode),
-                        largeTitle = stringResource(R.string.debug_mode),
-                        scrollBehavior = debugScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
+            SecondaryPageScaffold(
+                title = stringResource(R.string.debug_mode),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
                 DebugPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(debugScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
                     loggingEnabled = loggingEnabled.value,
                     onLoggingEnabledChange = {
@@ -1229,104 +1597,18 @@ fun MainUI(
             }
         }
         entry<Screen.DebugLog> {
-            val logScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = stringResource(R.string.debug_view_log),
-                        largeTitle = stringResource(R.string.debug_view_log),
-                        scrollBehavior = logScrollBehavior,
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
+            SecondaryPageScaffold(
+                title = stringResource(R.string.debug_view_log),
+                onBack = { backStack.removeLast() },
+            ) { padding, behavior ->
                 DebugLogPage(
                     modifier = Modifier
                         .overScrollVertical()
-                        .nestedScroll(logScrollBehavior.nestedScrollConnection),
+                        .nestedScroll(behavior.nestedScrollConnection),
                     contentPadding = padding,
                     onClear = { BtLogStore.clear() }
                 )
             }
-        }
-    }
-
-    val entries = rememberDecoratedNavEntries(
-        backStack = backStack,
-        entryProvider = entryProvider
-    )
-
-    NavDisplay(
-        entries = entries,
-        onBack = {
-            if (backStack.size > 1) {
-                backStack.removeLast()
-            } else {
-                (context as? Activity)?.finish()
-            }
-        }
-    )
-}
-
-@Composable
-fun ConnectingPage() {
-    val primaryColor = MiuixTheme.colorScheme.primary
-    val infiniteTransition = rememberInfiniteTransition(label = "loading")
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
-
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Canvas(modifier = Modifier.size(48.dp)) {
-                drawArc(
-                    color = primaryColor,
-                    startAngle = angle,
-                    sweepAngle = 270f,
-                    useCenter = false,
-                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-                )
-            }
-            Text(
-                stringResource(R.string.connecting),
-                modifier = Modifier.padding(top = 16.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun ErrorPage(onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                stringResource(R.string.connect_failed),
-                color = Color(0xFFFF3B30)
-            )
-            TextButton(
-                text = stringResource(R.string.retry),
-                onClick = onRetry,
-                modifier = Modifier.padding(top = 12.dp)
-            )
         }
     }
 }

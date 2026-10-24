@@ -22,6 +22,9 @@ enum class PodImageSlot(val key: String, val fileName: String) {
     /** 连接临时超级岛右耳图 */
     ISLAND_RIGHT("island_right", "island_right.bin"),
 
+    /** 充电盒图（超级岛/通知） */
+    BOX_IMAGE("box_image", "box_image.bin"),
+
     /** 连接弹窗动画视频 */
     CONNECT_VIDEO("connect_video", "connect_video.bin");
 
@@ -32,14 +35,14 @@ enum class PodImageSlot(val key: String, val fileName: String) {
             entries.firstOrNull { it.fileName == name }
 
         /** 图片类槽位（不含视频），用于设置页的图片区。 */
-        val IMAGES = listOf(HOME_IMAGE, ISLAND_LEFT, ISLAND_RIGHT)
+        val IMAGES = listOf(HOME_IMAGE, ISLAND_LEFT, ISLAND_RIGHT, BOX_IMAGE)
     }
 }
 
 /**
  * 用户自定义耳机素材的存储。
  *
- * 文件放在 filesDir/pod_images/，未设置时调用方回退到 APK 内置资源。
+ * 文件放在 filesDir/pod_images/，未设置时调用方回退到欢律在线素材或 APK 内置资源。
  * 被 hook 的系统进程（com.android.bluetooth / SystemUI）经 [PodImageProvider]
  * 以 content:// 读取。
  */
@@ -61,6 +64,21 @@ object PodImageStore {
         customFile(context, slot) != null
 
     /**
+     * 用户自定义优先，否则使用欢律在线素材（[OfficialArtworkStore]）。
+     * 在线素材只覆盖同名的官方图片，连接视频仍只认用户自定义。
+     */
+    fun resolvedFile(context: Context, slot: PodImageSlot): File? =
+        customFile(context, slot) ?: officialFile(context, slot)
+
+    private fun officialFile(context: Context, slot: PodImageSlot): File? = when (slot) {
+        PodImageSlot.HOME_IMAGE -> OfficialArtworkStore.file(context, OfficialArtworkStore.Kind.DETAIL)
+        PodImageSlot.ISLAND_LEFT -> OfficialArtworkStore.file(context, OfficialArtworkStore.Kind.LEFT)
+        PodImageSlot.ISLAND_RIGHT -> OfficialArtworkStore.file(context, OfficialArtworkStore.Kind.RIGHT)
+        PodImageSlot.BOX_IMAGE -> OfficialArtworkStore.file(context, OfficialArtworkStore.Kind.BOX)
+        PodImageSlot.CONNECT_VIDEO -> null
+    }
+
+    /**
      * 跨进程读取用的 URI：content://AUTHORITY/<slotKey>。
      *
      * 不做存在性检查——被 hook 的系统进程读不到本模块的 filesDir，只能由
@@ -69,7 +87,10 @@ object PodImageStore {
      */
     fun uri(slot: PodImageSlot): Uri = Uri.parse("content://$AUTHORITY/${slot.key}")
 
-    /** [PodImageProvider] 解析 uri → 实际文件。只认已知槽位，天然免于目录穿越。 */
+    /**
+     * [PodImageProvider] 解析 uri → 实际文件。自定义优先，其次欢律在线素材；
+     * 只认已知槽位，天然免于目录穿越。
+     */
     fun resolve(context: Context, uri: Uri): File? {
         val segments = uri.pathSegments
         if (segments.isEmpty()) return null
@@ -77,7 +98,7 @@ object PodImageStore {
         val slot = PodImageSlot.fromKey(segments.last())
             ?: PodImageSlot.fromFileName(segments.last())
             ?: return null
-        return customFile(context, slot)
+        return resolvedFile(context, slot)
     }
 
     fun save(context: Context, slot: PodImageSlot, bytes: ByteArray): Boolean {

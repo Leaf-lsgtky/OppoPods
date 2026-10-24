@@ -143,13 +143,15 @@ internal fun MelodyImageImportDialog(
             )
         }
 
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             TextButton(
                 text = stringResource(R.string.cancel),
                 onClick = onDismissRequest,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(12.dp))
             TextButton(
                 text = stringResource(R.string.import_melody_images_action),
                 enabled = selected != null && !importing,

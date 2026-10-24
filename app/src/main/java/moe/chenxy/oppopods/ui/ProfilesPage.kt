@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +31,7 @@ import moe.chenxy.oppopods.pods.CapabilityProfileFactory
 import moe.chenxy.oppopods.pods.DeviceModelRegistry
 import moe.chenxy.oppopods.pods.DeviceProfile
 import moe.chenxy.oppopods.pods.DeviceProfileStore
+import moe.chenxy.oppopods.pods.OfficialArtworkRepository
 import moe.chenxy.oppopods.pods.PodImageSlot
 import moe.chenxy.oppopods.pods.PodImageStore
 import moe.chenxy.oppopods.pods.ProfileMode
@@ -35,11 +39,13 @@ import moe.chenxy.oppopods.ui.dialogs.MelodyImageImportDialog
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonLocation
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -56,6 +62,7 @@ fun ProfilesPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     prefs: SharedPreferences,
     activeProfile: DeviceProfile,
+    deviceColor: Int? = null,
     onActiveProfileChanged: (DeviceProfile) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -72,6 +79,14 @@ fun ProfilesPage(
     // 素材变动后自增，用来让下面的「已自定义/默认」标签重新读取磁盘状态。
     var imageRevision by remember { mutableStateOf(0) }
     var pendingSlot by remember { mutableStateOf<PodImageSlot?>(null) }
+    var colorChoice by remember {
+        mutableStateOf(prefs.getInt("official_artwork_color", -1))
+    }
+    val artworkState by OfficialArtworkRepository.state.collectAsState()
+
+    LaunchedEffect(activeProfile.modelId) {
+        OfficialArtworkRepository.refresh(context)
+    }
 
     val selectedModelName = remember(selectedModelId, allModels) {
         allModels.firstOrNull { it.id == selectedModelId }?.name
@@ -166,6 +181,72 @@ fun ProfilesPage(
             SmallTitle(text = stringResource(R.string.pod_images))
         }
         item {
+            val modelId = activeProfile.modelId
+            val key = artworkState.key
+            val enabled = modelId.isNotBlank() && !artworkState.running
+            val summary = when {
+                artworkState.running -> artworkState.message
+                    ?: stringResource(R.string.official_artwork_summary)
+                artworkState.message != null -> artworkState.message!!
+                artworkState.imagesReady && key != null ->
+                    stringResource(R.string.official_artwork_cached, key.productId, key.color)
+                !modelId.isNotBlank() -> stringResource(R.string.official_artwork_need_model)
+                else -> stringResource(R.string.official_artwork_summary)
+            }
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
+            ) {
+                BasicComponent(
+                    title = stringResource(R.string.official_artwork_title),
+                    summary = summary,
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.official_artwork_color),
+                    items = listOf(stringResource(R.string.official_artwork_color_auto)) +
+                            (0..7).map { stringResource(R.string.official_artwork_color_value, it) },
+                    selectedIndex = if (colorChoice >= 0) colorChoice + 1 else 0,
+                    onSelectedIndexChange = {
+                        colorChoice = if (it == 0) -1 else it - 1
+                        prefs.edit().putInt("official_artwork_color", colorChoice).apply()
+                    },
+                )
+                val preferredColor = colorChoice.takeIf { it >= 0 } ?: deviceColor
+                if (artworkState.modelReady) {
+                    Text(
+                        text = stringResource(
+                            R.string.official_artwork_model_cached,
+                            (artworkState.modelBytes / 1024 / 1024).toInt(),
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        text = stringResource(R.string.official_artwork_download_images),
+                        onClick = {
+                            OfficialArtworkRepository.downloadImages(context, modelId, preferredColor)
+                        },
+                        enabled = enabled,
+                    )
+                    TextButton(
+                        text = stringResource(R.string.official_artwork_download_model),
+                        onClick = {
+                            OfficialArtworkRepository.downloadModel(context, modelId, preferredColor)
+                        },
+                        enabled = enabled && artworkState.imagesReady,
+                    )
+                }
+                if (artworkState.running) {
+                    InfiniteProgressIndicator(
+                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+                    )
+                }
+            }
+        }
+        item {
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
             ) {
@@ -201,6 +282,16 @@ fun ProfilesPage(
                     onPick = { pick(PodImageSlot.ISLAND_RIGHT) },
                     onReset = {
                         PodImageStore.clear(context, PodImageSlot.ISLAND_RIGHT)
+                        imageRevision++
+                    },
+                )
+                ImageSlotRow(
+                    titleRes = R.string.pod_image_box,
+                    slot = PodImageSlot.BOX_IMAGE,
+                    revision = imageRevision,
+                    onPick = { pick(PodImageSlot.BOX_IMAGE) },
+                    onReset = {
+                        PodImageStore.clear(context, PodImageSlot.BOX_IMAGE)
                         imageRevision++
                     },
                 )
@@ -267,10 +358,11 @@ fun ProfilesPage(
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             TextButton(
                 text = stringResource(R.string.cancel),
-                onClick = { showModelPicker.value = false }
+                onClick = { showModelPicker.value = false },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -286,10 +378,11 @@ fun ProfilesPage(
         show = pickFailed.value,
         onDismissRequest = { pickFailed.value = false },
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             TextButton(
                 text = stringResource(R.string.confirm),
-                onClick = { pickFailed.value = false }
+                onClick = { pickFailed.value = false },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -300,13 +393,15 @@ fun ProfilesPage(
         show = showResetAllConfirm.value,
         onDismissRequest = { showResetAllConfirm.value = false },
     ) {
-        Row(horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             TextButton(
                 text = stringResource(R.string.cancel),
                 onClick = { showResetAllConfirm.value = false },
                 modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.width(20.dp))
             TextButton(
                 text = stringResource(R.string.confirm),
                 onClick = {

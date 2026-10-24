@@ -21,3 +21,7 @@
 
 # ConnectedDevice is sent via putParcelableArrayListExtra in broadcasts.
 -keep class moe.chenxy.oppopods.pods.ConnectedDevice { *; }
+
+# miuix-nav restores the back stack through kotlinx.serialization reflection.
+-keep class moe.chenxy.oppopods.ui.Screen { *; }
+-keep class moe.chenxy.oppopods.ui.Screen$* { *; }

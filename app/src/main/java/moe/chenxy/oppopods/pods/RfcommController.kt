@@ -35,6 +35,8 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.putBatteryStatus
 import java.io.IOException
 import android.content.SharedPreferences
 import java.util.concurrent.Executor
+import kotlinx.serialization.json.Json
+import moe.chenxy.oppopods.pods.HearingProfile
 
 @SuppressLint("MissingPermission", "StaticFieldLeak")
 object RfcommController {
@@ -64,6 +66,8 @@ object RfcommController {
     private var lastTempBatt = 0
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
+    private var currentAncVariant: Int = -1
+    private var currentDeviceColor: Int? = null
     private var currentGameMode: Boolean = false
     private var currentEqPresetId: Int = -1
     private var currentDeviceEqPresets: List<EqDevicePreset> = emptyList()
@@ -102,6 +106,20 @@ object RfcommController {
     // Polling job
     private var batteryPollJob: kotlinx.coroutines.Job? = null
 
+    /** 贴合度 / 黄金听感状态机；懒创建，保证 profile 与 socket 已就绪。 */
+    @Volatile
+    private var calibrationEngine: CalibrationEngine? = null
+
+    @Synchronized
+    private fun calibration(): CalibrationEngine = calibrationEngine ?: CalibrationEngine(
+        sender = { packet -> sendPacketSafe(packet, "calibration") },
+        capabilityProvider = {
+            if (::activeProfile.isInitialized) activeProfile.calibrationCapability()
+            else CalibrationCapability()
+        },
+        onStateChanged = { state -> broadcastCalibrationState(state) },
+    ).also { calibrationEngine = it }
+
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
             p1?.let { handleUIEvent(it, p0) }
@@ -112,12 +130,45 @@ object RfcommController {
         if (status < 1 || status > 4) return
         Intent(OppoPodsAction.ACTION_PODS_ANC_CHANGED).apply {
             this.putExtra("status", status)
+            this.putExtra(OppoPodsAction.EXTRA_ANC_VARIANT, currentAncVariant)
             this.`package` = BuildConfig.APPLICATION_ID
             this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             mContext!!.sendBroadcast(this)
         }
         sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_ANC_CHANGED) {
             putExtra("status", status)
+            putExtra(OppoPodsAction.EXTRA_ANC_VARIANT, currentAncVariant)
+        }
+    }
+
+    private fun changeUIColorStatus(color: Int) {
+        Intent(OppoPodsAction.ACTION_PODS_COLOR_CHANGED).apply {
+            this.putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, color)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext?.sendBroadcast(this)
+        }
+    }
+
+    private fun changeUIVariant(index: Int) {
+        Intent(OppoPodsAction.ACTION_PODS_ANC_VARIANT_CHANGED).apply {
+            putExtra(OppoPodsAction.EXTRA_ANC_VARIANT, index)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext?.sendBroadcast(this)
+        }
+    }
+
+    private fun broadcastCalibrationState(state: CalibrationState) {
+        val context = mContext ?: return
+        Intent(OppoPodsAction.ACTION_PODS_CALIBRATION_STATE).apply {
+            this.`package` = BuildConfig.APPLICATION_ID
+            putExtra(
+                OppoPodsAction.EXTRA_CALIBRATION_JSON,
+                DeviceProfileStore.exportCalibration(state),
+            )
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            context.sendBroadcast(this)
         }
     }
 
@@ -339,6 +390,7 @@ object RfcommController {
                     changeUIBatteryStatus(currentBatteryParams)
                 broadcastResolvedProfile(activeProfile)
                 changeUIAncStatus(currentAnc)
+                currentDeviceColor?.let { changeUIColorStatus(it) }
                 changeUIGameModeStatus(currentGameMode)
                 changeUIEqStatus()
                 changeUISpatialAudioStatus(currentSpatialAudioMode)
@@ -348,19 +400,31 @@ object RfcommController {
                 changeUIAutoPlayPauseStatus(currentAutoPlayPause)
                 changeUIDualDeviceStatus(currentDualDevice)
                 changeUIConnectedDevicesStatus(currentConnectedDevices)
+                broadcastCalibrationState(calibration().state.value)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
+                    this.putExtra("device_address", runCatching { mDevice.address }.getOrNull())
                     this.`package` = BuildConfig.APPLICATION_ID
                     this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     mContext!!.sendBroadcast(this)
                 }
                 sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_CONNECTED) {
                     putExtra("device_name", mDevice.name ?: cachedDeviceName)
+                    putExtra("device_address", runCatching { mDevice.address }.getOrNull())
                 }
             }
             OppoPodsAction.ACTION_ANC_SELECT -> {
                 val status = intent.getIntExtra("status", 0)
                 setANCMode(status)
+            }
+            OppoPodsAction.ACTION_ANC_VARIANT_SELECT -> {
+                setAncVariant(intent.getIntExtra(OppoPodsAction.EXTRA_ANC_VARIANT, -1))
+            }
+            OppoPodsAction.ACTION_CALIBRATION_COMMAND -> {
+                handleCalibrationCommand(intent)
+            }
+            OppoPodsAction.ACTION_PODS_DISCONNECT_REQUEST -> {
+                disconnectAudio(mContext ?: return, mDevice)
             }
             OppoPodsAction.ACTION_REFRESH_STATUS -> {
                 val allowReconnect = intent.getBooleanExtra(
@@ -623,8 +687,11 @@ object RfcommController {
 
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
             this.addAction(OppoPodsAction.ACTION_ANC_SELECT)
+            this.addAction(OppoPodsAction.ACTION_ANC_VARIANT_SELECT)
+            this.addAction(OppoPodsAction.ACTION_CALIBRATION_COMMAND)
             this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
             this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
+        this.addAction(OppoPodsAction.ACTION_PODS_DISCONNECT_REQUEST)
             this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
             this.addAction(OppoPodsAction.ACTION_EQ_PRESET_SET)
             this.addAction(OppoPodsAction.ACTION_EQ_PRESET_SAVE)
@@ -672,6 +739,8 @@ object RfcommController {
                 // 使后续查询与控制都基于正确机型的位图索引。
                 sendPacketSafe(OppoPackets.buildQueryProductId(), "query product id")
                 delay(200)
+                sendPacketSafe(OppoPackets.buildQueryColor(), "query color")
+                delay(200)
                 sendPacketSafe(OppoPackets.buildQueryBroadcastCodes(), "query broadcast codes")
                 delay(300)
                 sendStatusQueryPackets()
@@ -699,6 +768,7 @@ object RfcommController {
                 if (::mDevice.isInitialized) {
                     putExtra("address", mDevice.address)
                     putExtra("device_name", mDevice.name ?: cachedDeviceName)
+                    putExtra("device_address", runCatching { mDevice.address }.getOrNull())
                 }
                 fill()
                 setPackage(targetPackage)
@@ -847,6 +917,9 @@ object RfcommController {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
 
+        // 贴合度 / 黄金听感的响应先交给状态机；其余解析器继续按原顺序处理。
+        calibration().onPacket(packet)
+
         // Try parse as battery response (query response, Cmd=0x8106)
         val batteryResult = BatteryParser.parse(packet)
         if (batteryResult != null) {
@@ -858,6 +931,21 @@ object RfcommController {
         val activeResult = BatteryParser.parseActiveReport(packet)
         if (activeResult != null) {
             handleBatteryChanged(activeResult, preserveMissing = true)
+            return
+        }
+
+        // Try parse 0x810B color before other responses.
+        if (packet.size >= 6) {
+            val cmd = (packet[4].toInt() and 0xFF) or ((packet[5].toInt() and 0xFF) shl 8)
+            if (cmd == Cmd.COLOR_RESPONSE) {
+                Log.d(TAG, "0x810B raw: ${packet.joinToString(" ") { "%02X".format(it) }}")
+            }
+        }
+        val color = ColorParser.parse(packet)
+        if (color != null) {
+            Log.d(TAG, "Protocol color received: $color")
+            currentDeviceColor = color
+            changeUIColorStatus(color)
             return
         }
 
@@ -942,7 +1030,13 @@ object RfcommController {
                 currentNoiseLevel = ancResult.noiseLevel
                 changeUINoiseLevelStatus(ancResult.noiseLevel)
             }
+            currentAncVariant = if (ancResult.mode == NoiseControlMode.TRANSPARENCY) {
+                ancResult.bitmapIndex
+            } else {
+                -1
+            }
             changeUIAncStatus(currentAnc)
+            changeUIVariant(currentAncVariant)
             return
         }
 
@@ -1035,6 +1129,9 @@ object RfcommController {
     fun disconnectedPod(context: Context, device: BluetoothDevice) {
         isPodConnected = false
         batteryPollJob?.cancel()
+        calibrationEngine?.onDisconnected()
+        currentAncVariant = -1
+        currentDeviceColor = null
 
         synchronized(rfcommLock) {
             closeRfcommSocketLocked()
@@ -1074,6 +1171,9 @@ object RfcommController {
     fun shutdownForHotReload() {
         batteryPollJob?.cancel()
         batteryPollJob = null
+        calibrationEngine?.dispose()
+        calibrationEngine = null
+        currentAncVariant = -1
         synchronized(rfcommLock) {
             closeRfcommSocketLocked()
         }
@@ -1283,10 +1383,71 @@ object RfcommController {
     fun setANCMode(mode: Int) {
         Log.d(TAG, "setANCMode: $mode")
         currentAnc = mode  // 乐观更新，与 AppRfcommController 保持一致
+        if (mode != 3) {
+            currentAncVariant = -1
+        } else if (::activeProfile.isInitialized) {
+            currentAncVariant = activeProfile.transparencyVariants
+                .firstOrNull { it.key == AncKeys.TRANSPARENCY }
+                ?.protocolIndex ?: -1
+        }
         if (mode !in 1..4) return
         val packet = activeProfile.ancPacket(mode)
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(packet, "set ANC mode")
+        }
+    }
+
+    /** 通透模式下切换到「强化人声 / 聆听」变体。 */
+    fun setAncVariant(index: Int) {
+        if (!::activeProfile.isInitialized) return
+        if (activeProfile.transparencyVariants.none { it.protocolIndex == index }) return
+        currentAnc = 3
+        currentAncVariant = index
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(
+                activeProfile.transparencyVariantPacket(index),
+                "set transparency variant",
+            )
+        }
+        changeUIVariant(index)
+    }
+
+    private fun handleCalibrationCommand(intent: Intent) {
+        val engine = calibration()
+        when (intent.getStringExtra(OppoPodsAction.EXTRA_CALIBRATION_COMMAND)) {
+            CalibrationCommand.START_FIT -> engine.startFit()
+            CalibrationCommand.START_HEARING -> engine.startHearing()
+            CalibrationCommand.ANSWER -> engine.answer(
+                intent.getBooleanExtra(OppoPodsAction.EXTRA_CALIBRATION_HEARD, false),
+            )
+            CalibrationCommand.SET_LEVEL -> engine.setLevel(
+                intent.getIntExtra(OppoPodsAction.EXTRA_CALIBRATION_LEVEL, 5),
+                intent.getBooleanExtra(OppoPodsAction.EXTRA_CALIBRATION_RELEASED, true),
+            )
+            CalibrationCommand.NEXT -> engine.next()
+            CalibrationCommand.PREVIOUS -> engine.previous()
+            CalibrationCommand.RESUME -> engine.resume()
+            CalibrationCommand.PAUSE -> engine.pause()
+            CalibrationCommand.SAVE -> engine.save(
+                intent.getStringExtra(OppoPodsAction.EXTRA_CALIBRATION_NAME).orEmpty(),
+            )
+            CalibrationCommand.CANCEL -> engine.cancel()
+            CalibrationCommand.SET_ENABLED -> engine.setHearingEnabled(
+                intent.getBooleanExtra(OppoPodsAction.EXTRA_CALIBRATION_ENABLED, false),
+            )
+            CalibrationCommand.PREVIEW -> engine.setPreview(
+                intent.getBooleanExtra(OppoPodsAction.EXTRA_CALIBRATION_PREVIEW, false),
+            )
+            CalibrationCommand.REFRESH -> engine.refresh()
+    CalibrationCommand.APPLY_PROFILE -> {
+        val profile = runCatching {
+            Json.decodeFromString(
+                HearingProfile.serializer(),
+                intent.getStringExtra(OppoPodsAction.EXTRA_CALIBRATION_PROFILE).orEmpty(),
+            )
+        }.getOrNull()
+        if (profile != null) engine.applyProfile(profile)
+    }
         }
     }
 

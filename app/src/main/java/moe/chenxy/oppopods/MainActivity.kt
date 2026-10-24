@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import moe.chenxy.oppopods.ui.App
+import moe.chenxy.oppopods.ui.AppThemeConfig
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,11 +20,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val prefs = remember { getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
-            val themeMode = remember { mutableStateOf(prefs.getInt("theme_mode", 0)) }
+            val themeConfig = remember { mutableStateOf(AppThemeConfig.load(prefs)) }
             val systemDark = isSystemInDarkTheme()
-            val darkMode = when (themeMode.value) {
+            val darkMode = when (themeConfig.value.mode) {
                 1 -> false
                 2 -> true
+                4 -> false
+                5 -> true
                 else -> systemDark
             }
 
@@ -39,11 +42,11 @@ class MainActivity : ComponentActivity() {
             }
 
             App(
-                themeMode = themeMode,
-                onThemeModeChange = {
-                    themeMode.value = it
-                    prefs.edit().putInt("theme_mode", it).apply()
-                }
+                themeConfig = themeConfig,
+                onThemeConfigChange = {
+                    themeConfig.value = it
+                    AppThemeConfig.save(prefs, it)
+                },
             )
         }
     }

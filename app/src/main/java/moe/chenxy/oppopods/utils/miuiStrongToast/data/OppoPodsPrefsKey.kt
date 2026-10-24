@@ -17,6 +17,14 @@ object OppoPodsPrefsKey {
     const val PROFILE_MODE = "profile_mode"
     /** 手动指定型号时的白名单 productId。 */
     const val SELECTED_MODEL_ID = "selected_model_id"
+    /** 宽屏侧边导航栏是否展开。 */
+    const val NAV_RAIL_EXPANDED = "nav_rail_expanded"
+    /** 上一次连接成功的耳机地址；未连接时用它渲染对应型号的页面。 */
+    const val LAST_DEVICE_ADDRESS = "last_device_address"
+    /** 上一次连接成功的耳机名称，未连接时作为页面标题。 */
+    const val LAST_DEVICE_NAME = "last_device_name"
+    /** 上一次连接时耳机上报的 productId（0x8103），未连接时用它还原完整能力。 */
+    const val LAST_DEVICE_PRODUCT_ID = "last_device_product_id"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true
     const val DEFAULT_TEMPORARY_BATTERY_ISLAND_DURATION_SECONDS = 4

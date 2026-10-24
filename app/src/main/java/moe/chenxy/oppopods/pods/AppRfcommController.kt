@@ -45,6 +45,15 @@ class AppRfcommController {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var batteryPollJob: Job? = null
 
+    /** 贴合度 / 黄金听感状态机；与 Hook 进程共用同一实现。 */
+    val calibration = CalibrationEngine(
+        sender = { packet -> sendPacket(packet) },
+        capabilityProvider = {
+            if (::profile.isInitialized) profile.calibrationCapability()
+            else CalibrationCapability()
+        },
+    )
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
 
@@ -53,6 +62,10 @@ class AppRfcommController {
 
     private val _ancMode = MutableStateFlow(NoiseControlMode.OFF)
     val ancMode: StateFlow<NoiseControlMode> = _ancMode
+
+    /** 当前通透变体的 protocolIndex；-1 表示未知/非通透。 */
+    private val _ancVariant = MutableStateFlow(-1)
+    val ancVariant: StateFlow<Int> = _ancVariant
 
     private val _deviceName = MutableStateFlow("")
     val deviceName: StateFlow<String> = _deviceName
@@ -99,6 +112,10 @@ class AppRfcommController {
     /** 自动识别命中的白名单型号名；null 表示尚未识别或未命中。 */
     val identifiedModel: StateFlow<String?> = _identifiedModel
 
+    private val _deviceColor = MutableStateFlow<Int?>(null)
+    /** 0x810B 读到的协议配色编号，用于匹配欢律官方素材。 */
+    val deviceColor: StateFlow<Int?> = _deviceColor
+
     /**
      * 收到 0x8103 后按 productId 解析配置档。由调用方注入（需要 Context 与 prefs），
      * 返回 null 表示不切换（非自动模式或型号未收录）。
@@ -109,6 +126,7 @@ class AppRfcommController {
         this.profile = profile
         _eqPresets.value = profile.eqPresets
         _eqDevicePresets.value = emptyList()
+        _ancVariant.value = -1
         pendingDeletedEqIds.clear()
         pendingSavedEqName = null
     }
@@ -157,6 +175,8 @@ class AppRfcommController {
         _eqDevicePresets.value = emptyList()
         currentEqPresetId = -1
         _eqPresetId.value = -1
+        _ancVariant.value = -1
+        _deviceColor.value = null
         firstBatteryReceived = false
         _deviceName.value = device.name ?: device.address
         _connectionState.value = ConnectionState.CONNECTING
@@ -178,6 +198,8 @@ class AppRfcommController {
                 // 先取 productId，命中白名单后 handlePacket 会重建 profile，
                 // 后续查询与控制即基于该机型的位图索引。
                 sendPacket(OppoPackets.buildQueryProductId())
+                delay(200)
+                sendPacket(OppoPackets.buildQueryColor())
                 delay(200)
                 sendPacket(OppoPackets.buildQueryBroadcastCodes())
 
@@ -232,6 +254,8 @@ class AppRfcommController {
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
+        // 贴合度 / 黄金听感的响应先交给状态机；其余解析器继续按原顺序处理。
+        calibration.onPacket(packet)
 
         val result = BatteryParser.parse(packet)
         if (result != null) {
@@ -281,6 +305,20 @@ class AppRfcommController {
                 firstBatteryReceived = true
                 if (profile.customEqVisible) queryEqDetails()
             }
+            return
+        }
+
+        // Try parse 0x810B color before other responses.
+        if (packet.size >= 6) {
+            val cmd = (packet[4].toInt() and 0xFF) or ((packet[5].toInt() and 0xFF) shl 8)
+            if (cmd == Cmd.COLOR_RESPONSE) {
+                Log.d(TAG, "0x810B raw: ${packet.joinToString(" ") { "%02X".format(it) }}")
+            }
+        }
+        val color = ColorParser.parse(packet)
+        if (color != null) {
+            Log.d(TAG, "Protocol color received: $color")
+            _deviceColor.value = color
             return
         }
 
@@ -342,6 +380,9 @@ class AppRfcommController {
         if (ancResult != null) {
             Log.d(TAG, "ANC mode received: ${ancResult.mode}, noiseLevel=${ancResult.noiseLevel}")
             _ancMode.value = ancResult.mode
+            if (ancResult.bitmapIndex >= 0) {
+                _ancVariant.value = ancResult.bitmapIndex
+            }
             if (ancResult.noiseLevel != null) {
                 _noiseLevel.value = ancResult.noiseLevel
             }
@@ -530,7 +571,23 @@ class AppRfcommController {
             NoiseControlMode.ADAPTIVE -> 4
         }
         _ancMode.value = mode
+        if (mode == NoiseControlMode.TRANSPARENCY && ::profile.isInitialized) {
+            val standard = profile.transparencyVariants
+                .firstOrNull { it.key == AncKeys.TRANSPARENCY }
+            if (standard != null) _ancVariant.value = standard.protocolIndex
+        } else {
+            _ancVariant.value = -1
+        }
         scope.launch { sendPacket(profile.ancPacket(ancInt)) }
+    }
+
+    /** 通透模式下切换到「强化人声 / 聆听」等变体。 */
+    fun setAncVariant(index: Int) {
+        if (index < 0 || !::profile.isInitialized) return
+        if (profile.transparencyVariants.none { it.protocolIndex == index }) return
+        _ancVariant.value = index
+        _ancMode.value = NoiseControlMode.TRANSPARENCY
+        scope.launch { sendPacket(profile.transparencyVariantPacket(index)) }
     }
 
     /**
@@ -572,11 +629,13 @@ class AppRfcommController {
     fun disconnect() {
         isConnected = false
         batteryPollJob?.cancel()
+        calibration.onDisconnected()
         try { socket?.close() } catch (_: IOException) {}
         socket = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _batteryParams.value = BatteryParams()
         _ancMode.value = NoiseControlMode.OFF
+        _ancVariant.value = -1
         _deviceName.value = ""
         _gameMode.value = false
         _spatialAudioMode.value = SpatialAudioMode.OFF
@@ -594,5 +653,6 @@ class AppRfcommController {
         _connectedDevices.value = emptyList()
         _connectedDevicesReceived.value = false
         _identifiedModel.value = null
+        _deviceColor.value = null
     }
 }

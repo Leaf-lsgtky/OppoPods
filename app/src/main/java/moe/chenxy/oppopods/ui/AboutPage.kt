@@ -102,8 +102,7 @@ import androidx.compose.ui.unit.LayoutDirection
 fun SettingsPage(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    themeMode: MutableState<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {},
+    onOpenTheme: () -> Unit = {},
     showConnectionBatteryIsland: MutableState<Boolean> =
         mutableStateOf(OppoPodsPrefsKey.DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND),
     onShowConnectionBatteryIslandChange: (Boolean) -> Unit = {},
@@ -154,11 +153,10 @@ fun SettingsPage(
     ) {
         item {
             Card {
-                OverlayDropdownPreference(
+                ArrowPreference(
                     title = stringResource(R.string.theme_title),
-                    items = themeOptions,
-                    selectedIndex = themeMode.value,
-                    onSelectedIndexChange = { onThemeModeChange(it) }
+                    summary = stringResource(R.string.theme_summary),
+                    onClick = onOpenTheme,
                 )
             }
         }
@@ -221,8 +219,14 @@ fun SettingsPage(
             }
         }
 
-        if (debugMode) {
-            item {
+        item {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = debugMode,
+                enter = androidx.compose.animation.expandVertically() +
+                        androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() +
+                        androidx.compose.animation.fadeOut(),
+            ) {
                 Card(modifier = Modifier.padding(top = 12.dp)) {
                     ArrowPreference(
                         title = stringResource(R.string.debug_mode),
@@ -455,12 +459,8 @@ fun AboutPage(
         }
     }
     val barBlurBackdrop = rememberBlurBackdrop(enableBlur = true)
-    val blurActive = barBlurBackdrop != null && scrollProgress == 1f
-    val barColor = if (blurActive) {
-        Color.Transparent
-    } else {
-        if (scrollProgress == 1f) MiuixTheme.colorScheme.surface else Color.Transparent
-    }
+    val blurActive = barBlurBackdrop != null
+    val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
 
     Scaffold(
         modifier = modifier,
