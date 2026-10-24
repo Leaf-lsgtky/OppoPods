@@ -17,7 +17,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 @Composable
 fun ThemePage(
@@ -36,14 +36,11 @@ fun ThemePage(
     )
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .overScrollVertical(),
+        modifier = modifier.fillMaxSize().scrollEndHaptic(),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 12.dp,
             bottom = contentPadding.calculateBottomPadding() + 24.dp,
         ),
-        overscrollEffect = null,
     ) {
         item {
             SmallTitle(text = stringResource(R.string.theme_title))

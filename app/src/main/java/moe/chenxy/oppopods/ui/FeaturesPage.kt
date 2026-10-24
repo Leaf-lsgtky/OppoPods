@@ -18,7 +18,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /** 功能页：主页剩下的声音、佩戴和「更多设置」。 */
 @Composable
@@ -68,14 +68,11 @@ fun FeaturesPage(
         ?: 0
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .overScrollVertical(),
+        modifier = modifier.fillMaxSize().scrollEndHaptic(),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 12.dp,
             bottom = contentPadding.calculateBottomPadding() + 24.dp,
         ),
-        overscrollEffect = null,
     ) {
         item {
             androidx.compose.animation.AnimatedVisibility(

@@ -161,24 +161,6 @@ fun PodDetailPage(
                 AncSwitch(ancMode, onAncModeChange, adaptiveModeEnabled = adaptiveModeEnabled)
             }
         }
-        if (onDisconnect != null) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp)
-                ) {
-                    BasicComponent(
-                        title = stringResource(R.string.disconnect),
-                        // 断开是破坏性操作，文字用 miuix 的错误色提示。
-                        titleColor = BasicComponentDefaults.titleColor(
-                            color = MiuixTheme.colorScheme.error,
-                        ),
-                        onClick = onDisconnect,
-                    )
-                }
-            }
-        }
 
         item {
             androidx.compose.animation.AnimatedVisibility(
@@ -220,6 +202,25 @@ fun PodDetailPage(
                         onSelectedIndexChange = {
                             onAncVariantChange(transparencyVariants[it].protocolIndex)
                         },
+                    )
+                }
+            }
+        }
+
+        if (onDisconnect != null) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp)
+                ) {
+                    BasicComponent(
+                        title = stringResource(R.string.disconnect),
+                        // 断开是破坏性操作，文字用 miuix 的错误色提示。
+                        titleColor = BasicComponentDefaults.titleColor(
+                            color = MiuixTheme.colorScheme.error,
+                        ),
+                        onClick = onDisconnect,
                     )
                 }
             }
