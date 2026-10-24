@@ -28,6 +28,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.CapabilityProfileFactory
+import moe.chenxy.oppopods.pods.DeviceAppearanceStore
+import moe.chenxy.oppopods.pods.ModelColorCatalog
+import moe.chenxy.oppopods.pods.OfficialArtworkStore
 import moe.chenxy.oppopods.pods.DeviceModelRegistry
 import moe.chenxy.oppopods.pods.DeviceProfile
 import moe.chenxy.oppopods.pods.DeviceProfileStore
@@ -84,8 +87,17 @@ fun ProfilesPage(
     }
     val artworkState by OfficialArtworkRepository.state.collectAsState()
 
-    LaunchedEffect(activeProfile.modelId) {
-        OfficialArtworkRepository.refresh(context)
+    val effectiveDetectedColor = deviceColor
+        ?: DeviceAppearanceStore.getColor(context, null, activeProfile.modelId)
+        ?: ModelColorCatalog.getDefaultColor(activeProfile.modelId)
+
+    LaunchedEffect(activeProfile.modelId, colorChoice, deviceColor) {
+        val targetColor = colorChoice.takeIf { it >= 0 } ?: effectiveDetectedColor
+        if (activeProfile.modelId.isNotBlank() && targetColor != null) {
+            OfficialArtworkRepository.syncColor(context, activeProfile.modelId, targetColor)
+        } else {
+            OfficialArtworkRepository.refresh(context)
+        }
     }
 
     val selectedModelName = remember(selectedModelId, allModels) {
@@ -184,12 +196,19 @@ fun ProfilesPage(
             val modelId = activeProfile.modelId
             val key = artworkState.key
             val enabled = modelId.isNotBlank() && !artworkState.running
+            val colorOptions = remember(modelId) { ModelColorCatalog.getColorOptions(modelId) }
             val summary = when {
                 artworkState.running -> artworkState.message
                     ?: stringResource(R.string.official_artwork_summary)
                 artworkState.message != null -> artworkState.message!!
-                artworkState.imagesReady && key != null ->
-                    stringResource(R.string.official_artwork_cached, key.productId, key.color)
+                artworkState.imagesReady && key != null -> {
+                    val colorName = ModelColorCatalog.getColorName(key.productId, key.color)
+                    if (colorName != "颜色 ${key.color}") {
+                        "已缓存 ${key.productId} · $colorName (${key.color})"
+                    } else {
+                        stringResource(R.string.official_artwork_cached, key.productId, key.color)
+                    }
+                }
                 !modelId.isNotBlank() -> stringResource(R.string.official_artwork_need_model)
                 else -> stringResource(R.string.official_artwork_summary)
             }
@@ -200,17 +219,56 @@ fun ProfilesPage(
                     title = stringResource(R.string.official_artwork_title),
                     summary = summary,
                 )
+                val colorItems = remember(modelId, effectiveDetectedColor) {
+                    val autoLabel = if (effectiveDetectedColor != null) {
+                        val autoName = ModelColorCatalog.getColorName(modelId, effectiveDetectedColor)
+                        context.getString(R.string.official_artwork_color_auto) + " ($autoName)"
+                    } else {
+                        context.getString(R.string.official_artwork_color_auto)
+                    }
+                    if (colorOptions.isNotEmpty()) {
+                        listOf(autoLabel) + colorOptions.map { "${it.name} (${it.colorId})" }
+                    } else {
+                        listOf(autoLabel) + (0..7).map { context.getString(R.string.official_artwork_color_value, it) }
+                    }
+                }
+                val selectedDropdownIndex = remember(colorChoice, colorOptions) {
+                    if (colorChoice < 0) {
+                        0
+                    } else if (colorOptions.isNotEmpty()) {
+                        val idx = colorOptions.indexOfFirst { it.colorId == colorChoice }
+                        if (idx >= 0) idx + 1 else 0
+                    } else {
+                        (colorChoice + 1).coerceIn(0, 8)
+                    }
+                }
                 OverlayDropdownPreference(
                     title = stringResource(R.string.official_artwork_color),
-                    items = listOf(stringResource(R.string.official_artwork_color_auto)) +
-                            (0..7).map { stringResource(R.string.official_artwork_color_value, it) },
-                    selectedIndex = if (colorChoice >= 0) colorChoice + 1 else 0,
-                    onSelectedIndexChange = {
-                        colorChoice = if (it == 0) -1 else it - 1
-                        prefs.edit().putInt("official_artwork_color", colorChoice).apply()
+                    items = colorItems,
+                    selectedIndex = selectedDropdownIndex,
+                    onSelectedIndexChange = { index ->
+                        val newChoice = if (index == 0) {
+                            -1
+                        } else if (colorOptions.isNotEmpty()) {
+                            colorOptions[index - 1].colorId
+                        } else {
+                            index - 1
+                        }
+                        colorChoice = newChoice
+                        prefs.edit().putInt("official_artwork_color", newChoice).apply()
+
+                        val targetColor = if (newChoice >= 0) newChoice else effectiveDetectedColor
+                        if (targetColor != null && modelId.isNotBlank()) {
+                            val targetKey = OfficialArtworkStore.Key(modelId, targetColor)
+                            if (OfficialArtworkStore.selectExisting(context, targetKey)) {
+                                DeviceAppearanceStore.saveColor(context, null, modelId, targetColor)
+                                OfficialArtworkRepository.refresh(context)
+                                imageRevision++
+                            }
+                        }
                     },
                 )
-                val preferredColor = colorChoice.takeIf { it >= 0 } ?: deviceColor
+                val preferredColor = colorChoice.takeIf { it >= 0 } ?: effectiveDetectedColor
                 if (artworkState.modelReady) {
                     Text(
                         text = stringResource(

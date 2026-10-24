@@ -61,6 +61,9 @@ import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.BtLogStore
 import moe.chenxy.oppopods.pods.CalibrationCommand
+import moe.chenxy.oppopods.pods.DeviceAppearanceStore
+import moe.chenxy.oppopods.pods.ModelColorCatalog
+import moe.chenxy.oppopods.pods.OfficialArtworkRepository
 import moe.chenxy.oppopods.pods.CalibrationState
 import moe.chenxy.oppopods.pods.CustomButtonFunction
 import moe.chenxy.oppopods.pods.CustomButtonPosition
@@ -313,7 +316,11 @@ fun MainUI(
     val appCalibration by appController.calibration.state.collectAsState()
 
     val hookAncVariant = remember { mutableIntStateOf(-1) }
-    val hookDeviceColor = remember { mutableStateOf<Int?>(null) }
+    val hookDeviceColor = remember {
+        mutableStateOf(
+            DeviceAppearanceStore.getColor(context, lastDeviceAddress.value, activeProfile.value.id)
+        )
+    }
     val hookCalibration = remember { mutableStateOf(CalibrationState()) }
 
     val isStandaloneConnected = appConnState == AppRfcommController.ConnectionState.CONNECTED
@@ -355,8 +362,30 @@ fun MainUI(
     val displayConnectedDevices = if (isStandaloneConnected) appConnectedDevices else hookConnectedDevices.value
     val displayConnectedDevicesReceived = if (isStandaloneConnected) appConnectedDevicesReceived else hookConnectedDevicesReceived.value
     val displayAncVariant = if (isStandaloneConnected) appAncVariant else hookAncVariant.value
-    val displayDeviceColor = if (isStandaloneConnected) appDeviceColor else hookDeviceColor.value
+    val displayDeviceColor = if (isStandaloneConnected) {
+        appDeviceColor ?: hookDeviceColor.value
+    } else {
+        hookDeviceColor.value ?: DeviceAppearanceStore.getColor(context, lastDeviceAddress.value, activeProfile.value.id)
+    }
     val displayCalibration = if (isStandaloneConnected) appCalibration else hookCalibration.value
+
+    LaunchedEffect(appDeviceColor) {
+        val color = appDeviceColor ?: return@LaunchedEffect
+        DeviceAppearanceStore.saveColor(
+            context,
+            address = lastDeviceAddress.value,
+            productId = activeProfile.value.id,
+            color = color,
+        )
+    }
+
+    LaunchedEffect(displayDeviceColor, activeProfile.value.modelId) {
+        val color = displayDeviceColor ?: return@LaunchedEffect
+        val modelId = activeProfile.value.modelId
+        if (modelId.isNotBlank()) {
+            OfficialArtworkRepository.syncColor(context, modelId, color)
+        }
+    }
 
     // 黄金听感历史：耳机只保留当前一份，多方案由手机侧按设备分开保存。
     val hearingDeviceKey = lastDeviceAddress.value
@@ -437,9 +466,22 @@ fun MainUI(
                     }
 
                     OppoPodsAction.ACTION_PODS_COLOR_CHANGED -> {
-                        hookDeviceColor.value = p1.getIntExtra(
+                        val color = p1.getIntExtra(
                             OppoPodsAction.EXTRA_DEVICE_COLOR, -1,
                         ).takeIf { it >= 0 }
+                        if (color != null) {
+                            hookDeviceColor.value = color
+                            DeviceAppearanceStore.saveColor(
+                                context,
+                                address = lastDeviceAddress.value,
+                                productId = activeProfile.value.id,
+                                color = color,
+                            )
+                            val modelId = activeProfile.value.modelId
+                            if (modelId.isNotBlank()) {
+                                OfficialArtworkRepository.syncColor(context, modelId, color)
+                            }
+                        }
                     }
 
                     OppoPodsAction.ACTION_PODS_CALIBRATION_STATE -> {
@@ -517,6 +559,7 @@ fun MainUI(
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
                         val deviceAddress = p1.getStringExtra("device_address")
+                        val connColor = p1.getIntExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, -1).takeIf { it >= 0 }
                         mainTitle.value = deviceName ?: ""
                         hookEqPresetId.value = -1
                         hookDeviceEqPresets.value = emptyList()
@@ -538,6 +581,21 @@ fun MainUI(
                                 DeviceProfileStore.resolveProfile(context, prefs, deviceName)
                             }.onSuccess { activeProfile.value = it }
                         }
+                        if (connColor != null) {
+                            hookDeviceColor.value = connColor
+                            DeviceAppearanceStore.saveColor(context, deviceAddress, activeProfile.value.id, connColor)
+                        } else {
+                            val savedColor = DeviceAppearanceStore.getColor(context, deviceAddress, activeProfile.value.id)
+                            if (savedColor != null) {
+                                hookDeviceColor.value = savedColor
+                            }
+                        }
+                        hookDeviceColor.value?.let { color ->
+                            val modelId = activeProfile.value.modelId
+                            if (modelId.isNotBlank()) {
+                                OfficialArtworkRepository.syncColor(context, modelId, color)
+                            }
+                        }
                         hookConnected.value = true
                         Log.i("OppoPods", "pod connected via hook: $deviceName")
                     }
@@ -548,7 +606,7 @@ fun MainUI(
                         hookEqPresetId.value = -1
                         hookDeviceEqPresets.value = emptyList()
                         hookAncVariant.value = -1
-                        hookDeviceColor.value = null
+                        // 保留 hookDeviceColor，断连时继续显示最近配色的素材
                         hookCalibration.value = CalibrationState()
                         if (p0 is MainActivity) {
                             p0.finish()

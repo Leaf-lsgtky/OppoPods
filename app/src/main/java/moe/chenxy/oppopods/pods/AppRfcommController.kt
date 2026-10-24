@@ -116,6 +116,10 @@ class AppRfcommController {
     /** 0x810B 读到的协议配色编号，用于匹配欢律官方素材。 */
     val deviceColor: StateFlow<Int?> = _deviceColor
 
+    fun setDeviceColor(color: Int?) {
+        _deviceColor.value = color
+    }
+
     /**
      * 收到 0x8103 后按 productId 解析配置档。由调用方注入（需要 Context 与 prefs），
      * 返回 null 表示不切换（非自动模式或型号未收录）。
@@ -176,7 +180,6 @@ class AppRfcommController {
         currentEqPresetId = -1
         _eqPresetId.value = -1
         _ancVariant.value = -1
-        _deviceColor.value = null
         firstBatteryReceived = false
         _deviceName.value = device.name ?: device.address
         _connectionState.value = ConnectionState.CONNECTING
@@ -653,6 +656,5 @@ class AppRfcommController {
         _connectedDevices.value = emptyList()
         _connectedDevicesReceived.value = false
         _identifiedModel.value = null
-        _deviceColor.value = null
     }
 }
