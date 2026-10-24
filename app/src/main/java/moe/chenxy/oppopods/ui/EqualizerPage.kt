@@ -1,6 +1,7 @@
 package moe.chenxy.oppopods.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
@@ -150,20 +153,55 @@ fun EqualizerPage(
                                 preset.name.contains("Dynaudio", ignoreCase = true) ||
                                 preset.name.contains("丹拿")
                         val isSelected = preset.id == selectedId
-                        BasicComponent(
-                            title = preset.name,
-                            summary = getPresetSummary(preset),
-                            onClick = { onSelectPreset(preset.id) },
-                            endActions = {
-                                if (showDynaudio) {
-                                    DynaudioBadge(modifier = Modifier.padding(end = 12.dp))
+                        if (showDynaudio) {
+                            BasicComponent(
+                                onClick = { onSelectPreset(preset.id) },
+                                endActions = {
+                                    Checkbox(
+                                        state = if (isSelected) ToggleableState.On else ToggleableState.Off,
+                                        onClick = { onSelectPreset(preset.id) },
+                                        modifier = Modifier.scale(0.75f),
+                                    )
+                                },
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = preset.name,
+                                        fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.onSurface,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Image(
+                                        painter = painterResource(R.drawable.melody_ui_equalizer_dynaudio),
+                                        contentDescription = "Dynaudio",
+                                        modifier = Modifier.size(width = 48.dp, height = 14.dp),
+                                    )
                                 }
-                                Checkbox(
-                                    state = if (isSelected) ToggleableState.On else ToggleableState.Off,
-                                    onClick = { onSelectPreset(preset.id) },
-                                )
-                            },
-                        )
+                                getPresetSummary(preset)?.let { summary ->
+                                    Text(
+                                        text = summary,
+                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                            }
+                        } else {
+                            BasicComponent(
+                                title = preset.name,
+                                summary = getPresetSummary(preset),
+                                onClick = { onSelectPreset(preset.id) },
+                                endActions = {
+                                    Checkbox(
+                                        state = if (isSelected) ToggleableState.On else ToggleableState.Off,
+                                        onClick = { onSelectPreset(preset.id) },
+                                        modifier = Modifier.scale(0.75f),
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -194,17 +232,26 @@ fun EqualizerPage(
                             endActions = {
                                 IconButton(
                                     onClick = { deleteTarget = preset },
-                                    modifier = Modifier.padding(end = 4.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.CenterVertically)
+                                        .size(28.dp),
+                                    minWidth = 28.dp,
+                                    minHeight = 28.dp,
                                 ) {
                                     Icon(
                                         imageVector = MiuixIcons.Delete,
                                         contentDescription = stringResource(R.string.eq_delete),
-                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(18.dp),
                                     )
                                 }
+                                Spacer(Modifier.width(6.dp))
                                 Checkbox(
                                     state = if (isSelected) ToggleableState.On else ToggleableState.Off,
                                     onClick = { openCustomEditor(preset) },
+                                    modifier = Modifier
+                                        .align(Alignment.CenterVertically)
+                                        .scale(0.75f),
                                 )
                             },
                         )
@@ -395,36 +442,6 @@ fun EqualizerPage(
     )
 }
 
-/** 丹拿特调角标 */
-@Composable
-fun DynaudioBadge(modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(3.dp),
-        color = Color(0xFF007AFF),
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "CO-CREATED WITH",
-                color = Color.White,
-                fontSize = 6.sp,
-                lineHeight = 7.sp,
-                fontWeight = FontWeight.Normal,
-            )
-            Text(
-                text = "DYNAUDIO",
-                color = Color.White,
-                fontSize = 8.sp,
-                lineHeight = 9.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
 /** 编辑器的临时状态 */
 private data class EqEditorState(
     val preset: EqDevicePreset,
@@ -477,58 +494,60 @@ private fun EqualizerEditPage(
             onSave()
             onDismissRequest()
         },
-        startAction = {
-            IconButton(
-                onClick = {
-                    onSave()
-                    onDismissRequest()
-                },
-                modifier = Modifier.padding(start = 8.dp),
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Close,
-                    contentDescription = stringResource(R.string.eq_close),
-                    tint = MiuixTheme.colorScheme.onSurface,
-                )
-            }
-        },
-        endAction = {
-            // 平衡顶栏间距，保持中间标题绝对居中
-            Spacer(Modifier.width(48.dp))
-        },
     ) {
         state?.let { current ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 32.dp),
+                    .padding(bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // 方案名称与右侧小号编辑图标（对齐黄金听感样式）
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                // 顶部操作栏：左侧关闭按钮，中间方案名称及编辑图标
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onRename() }
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
                 ) {
-                    Text(
-                        text = current.name,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MiuixTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        imageVector = MiuixIcons.Edit,
-                        contentDescription = stringResource(R.string.eq_rename),
-                        tint = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
+                    IconButton(
+                        onClick = {
+                            onSave()
+                            onDismissRequest()
+                        },
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Close,
+                            contentDescription = stringResource(R.string.eq_close),
+                            tint = MiuixTheme.colorScheme.onSurface,
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onRename() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = current.name,
+                            style = MiuixTheme.textStyles.title4,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = MiuixIcons.Edit,
+                            contentDescription = stringResource(R.string.eq_rename),
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(8.dp))
 
                 InteractiveEqualizerCurveView(
                     frequencies = current.frequencies,
@@ -663,7 +682,7 @@ private fun InteractiveEqualizerCurveView(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .height(260.dp)
             .pointerInput(frequencies.size, lower, upper) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
