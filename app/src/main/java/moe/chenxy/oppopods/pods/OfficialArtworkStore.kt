@@ -86,6 +86,21 @@ object OfficialArtworkStore {
                 file(context, Kind.LEFT) != null &&
                 file(context, Kind.RIGHT) != null
 
+    fun hasImages(context: Context, key: Key): Boolean {
+        val dir = imagesDirectory(context, key)
+        return File(dir, Kind.DETAIL.fileName).isFile &&
+                File(dir, Kind.LEFT.fileName).isFile &&
+                File(dir, Kind.RIGHT.fileName).isFile
+    }
+
+    fun selectExisting(context: Context, key: Key): Boolean {
+        if (hasImages(context, key)) {
+            writePointer(context, key)
+            return true
+        }
+        return false
+    }
+
     fun modelSize(context: Context): Long = modelFile(context)?.length() ?: 0L
 
     fun publishImages(
@@ -194,6 +209,22 @@ object OfficialArtworkRepository {
         _state.value = snapshot(context)
     }
 
+    /**
+     * 当外部识别到设备具体配色（如 0x810B 回报或持久化恢复）时，
+     * 若本地已存在该配色的缓存素材且当前未指向它，则自动将指针切到该配色。
+     */
+    fun syncColor(context: Context, productId: String, color: Int) {
+        if (productId.isBlank() || color < 0) return
+        val current = OfficialArtworkStore.currentKey(context)
+        if (current == null || (current.productId.equals(productId, ignoreCase = true) && current.color != color)) {
+            val key = OfficialArtworkStore.Key(productId, color)
+            if (OfficialArtworkStore.selectExisting(context, key)) {
+                DeviceAppearanceStore.saveColor(context, null, productId, color)
+                refresh(context)
+            }
+        }
+    }
+
     fun downloadImages(context: Context, productId: String, preferredColor: Int?) {
         if (productId.isBlank()) {
             _state.value = _state.value.copy(
@@ -233,13 +264,35 @@ object OfficialArtworkRepository {
     ) {
         _state.value = _state.value.copy(running = true, message = "正在获取官方素材…", error = false)
         Log.d(TAG, "downloadImages product=$productId preferred=$preferredColor")
+
+        val targetColor = preferredColor
+            ?: DeviceAppearanceStore.getColor(context, null, productId)
+            ?: ModelColorCatalog.getDefaultColor(productId)
+
         val candidates = buildList {
-            preferredColor?.let { add(it) }
-            for (color in 0..7) add(color)
+            targetColor?.let { add(it) }
+            addAll(ModelColorCatalog.getColorOptions(productId).map { it.colorId })
+            add(1)
+            add(2)
+            add(3)
+            add(0)
         }.distinct()
+
+        // 如果首选配色本地已有完整素材，直接切换指针，避免无谓的网络请求
+        if (targetColor != null) {
+            val key = OfficialArtworkStore.Key(productId, targetColor)
+            if (OfficialArtworkStore.selectExisting(context, key)) {
+                DeviceAppearanceStore.saveColor(context, null, productId, targetColor)
+                val name = ModelColorCatalog.getColorName(productId, targetColor)
+                _state.value = snapshot(context, "官方素材已更新（$name）")
+                return
+            }
+        }
+
         for (color in candidates) {
-            Log.d(TAG, "try artwork color=$color")
-            _state.value = _state.value.copy(message = "正在尝试颜色 $color…")
+            val colorName = ModelColorCatalog.getColorName(productId, color)
+            Log.d(TAG, "try artwork color=$color ($colorName)")
+            _state.value = _state.value.copy(message = "正在尝试 $colorName…")
             val resource = HeyMelodyArtworkClient.fetchControlMetadata(productId, color)
             if (resource == null) continue
             val temp = tempFile(context, "control")
@@ -249,7 +302,8 @@ object OfficialArtworkRepository {
                 if (!artwork.hasCoreImages) continue
                 val key = OfficialArtworkStore.Key(productId, color)
                 if (OfficialArtworkStore.publishImages(context, key, artwork)) {
-                    _state.value = snapshot(context, "官方素材已更新（颜色 $color）")
+                    DeviceAppearanceStore.saveColor(context, null, productId, color)
+                    _state.value = snapshot(context, "官方素材已更新（$colorName）")
                     return
                 }
             } finally {
@@ -271,6 +325,7 @@ object OfficialArtworkRepository {
         }
         _state.value = _state.value.copy(running = true, message = "正在获取 3D 模型…", error = false)
         val color = preferredColor?.takeIf { it == current.color } ?: current.color
+        val colorName = ModelColorCatalog.getColorName(productId, color)
         val resource = HeyMelodyArtworkClient.fetchModelMetadata(productId, color)
         if (resource == null) {
             _state.value = snapshot(context, "该型号没有可用的 3D 模型。", error = true)
@@ -288,7 +343,7 @@ object OfficialArtworkRepository {
                 return
             }
             if (OfficialArtworkStore.publishModel(context, current, glb)) {
-                _state.value = snapshot(context, "3D 模型已缓存（${glb.size / 1024 / 1024} MB）")
+                _state.value = snapshot(context, "3D 模型已缓存（${glb.size / 1024 / 1024} MB · $colorName）")
             } else {
                 _state.value = snapshot(context, "3D 模型写入失败。", error = true)
             }

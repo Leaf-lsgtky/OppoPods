@@ -148,6 +148,9 @@ object RfcommController {
             this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             mContext?.sendBroadcast(this)
         }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_COLOR_CHANGED) {
+            putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, color)
+        }
     }
 
     private fun changeUIVariant(index: Int) {
@@ -404,6 +407,7 @@ object RfcommController {
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     this.putExtra("device_address", runCatching { mDevice.address }.getOrNull())
+                    currentDeviceColor?.let { this.putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, it) }
                     this.`package` = BuildConfig.APPLICATION_ID
                     this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     mContext!!.sendBroadcast(this)
@@ -411,6 +415,7 @@ object RfcommController {
                 sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_CONNECTED) {
                     putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     putExtra("device_address", runCatching { mDevice.address }.getOrNull())
+                    currentDeviceColor?.let { putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, it) }
                 }
             }
             OppoPodsAction.ACTION_ANC_SELECT -> {
@@ -706,14 +711,20 @@ object RfcommController {
             this.addAction(OppoPodsAction.ACTION_ACTIVE_PROFILE_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
+        currentDeviceColor = DeviceAppearanceStore.getColor(context, device.address, activeProfile.id)
+
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
             this.putExtra("device_name", cachedDeviceName)
+            this.putExtra("device_address", device.address)
+            currentDeviceColor?.let { this.putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, it) }
             this.`package` = BuildConfig.APPLICATION_ID
             this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             context.sendBroadcast(this)
         }
         sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_CONNECTED) {
             putExtra("device_name", cachedDeviceName)
+            putExtra("device_address", device.address)
+            currentDeviceColor?.let { putExtra(OppoPodsAction.EXTRA_DEVICE_COLOR, it) }
         }
 
         MediaControl.mContext = mContext
@@ -945,6 +956,11 @@ object RfcommController {
         if (color != null) {
             Log.d(TAG, "Protocol color received: $color")
             currentDeviceColor = color
+            mContext?.let { ctx ->
+                val pid = if (::mDevice.isInitialized) runCatching { activeProfile.id }.getOrNull() else null
+                val addr = if (::mDevice.isInitialized) runCatching { mDevice.address }.getOrNull() else null
+                DeviceAppearanceStore.saveColor(ctx, addr, pid, color)
+            }
             changeUIColorStatus(color)
             return
         }
@@ -1131,7 +1147,7 @@ object RfcommController {
         batteryPollJob?.cancel()
         calibrationEngine?.onDisconnected()
         currentAncVariant = -1
-        currentDeviceColor = null
+        // 保留上次读取的物理颜色，不置空
 
         synchronized(rfcommLock) {
             closeRfcommSocketLocked()
