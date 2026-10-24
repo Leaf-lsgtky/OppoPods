@@ -918,7 +918,7 @@ private fun formatFrequency(frequency: Int): String = when {
     else -> frequency.toString()
 }
 
-/** 官方已确认的内置预设对应描述（匹配白名单中的 summaryId 1..5） */
+/** 官方内置预设对应描述（对应官方 HeyMelody 中的 summaryId 1..12） */
 private fun getPresetSummary(preset: EqPreset): String? {
     return when (preset.summaryId) {
         1 -> "经久耐听，完美兼容多种音乐风格"
@@ -926,6 +926,13 @@ private fun getPresetSummary(preset: EqPreset): String? {
         3 -> "专门为表现人声所调制，适合经典流行歌曲"
         4 -> "领略低音的量感和质感，适合电子乐与摇滚乐"
         5 -> "还原经典丹拿音响的原生音色"
+        6 -> "均衡清晰，兼容多种音乐风格"
+        7 -> "增强音乐的节奏感，适合运动和户外场景"
+        8 -> "领略中高频的明亮感，适合轻音乐"
+        9 -> "感受低音的氛围感，适合电子乐和摇滚"
+        10 -> "人声清晰干净，适合收听播客、听书"
+        11 -> "丹拿原声，经久耐听，兼容多种音乐风格"
+        12 -> "丹拿经典，还原经典丹拿音响的原生音色"
         else -> null
     }
 }
