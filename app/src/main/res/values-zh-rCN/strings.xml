@@ -170,22 +170,27 @@
     <string name="transparency_vocal_enhance">强化人声</string>
     <string name="transparency_listen">聆听</string>
 
-    <string name="fit_detection">耳塞贴合度检测</string>
-    <string name="fit_detection_summary">检测耳塞与耳道的贴合程度</string>
+    <string name="fit_detection">贴合度检测</string>
+    <string name="fit_detection_summary">根据贴合度确定合适的耳塞尺寸，提供最佳的降噪效果</string>
     <string name="fit_detection_title">贴合度检测</string>
-    <string name="fit_detection_hint">请将耳塞放入耳朵并保持完全贴合，然后开始检测。</string>
-    <string name="fit_detection_start">开始检测</string>
+    <string name="fit_detection_hint">为了获得最佳的降噪效果，请将耳塞放入耳朵时保持完全贴合，然后按下播放键开始检测。</string>
+    <string name="fit_detection_start">播放</string>
     <string name="fit_detection_retry">重新检测</string>
-    <string name="fit_detection_detecting">正在检测…</string>
+    <string name="fit_detection_detecting">正在播放…</string>
     <string name="fit_detection_keep_on">请勿摘下耳机</string>
     <string name="fit_detection_checking_wear">正在检查佩戴状态…</string>
     <string name="fit_detection_left">左耳机</string>
     <string name="fit_detection_right">右耳机</string>
     <string name="fit_detection_good">贴合良好</string>
-    <string name="fit_detection_fair">贴合一般</string>
-    <string name="fit_detection_poor">贴合较差</string>
+    <string name="fit_detection_fair">一般</string>
+    <string name="fit_detection_poor">较差</string>
     <string name="fit_detection_result_good_title">双耳贴合度良好</string>
     <string name="fit_detection_result_adjust">请调整耳塞位置或更换其他尺寸的耳塞后重新检测。</string>
+    <string name="fit_detection_result_adjust_both">请调整耳机在耳内的位置或尝试不同尺寸的耳塞后重新检测。</string>
+    <string name="fit_detection_result_adjust_left">请调整左耳在耳内的位置或尝试不同尺寸的耳塞后重新检测。</string>
+    <string name="fit_detection_result_adjust_right">请调整右耳在耳内的位置或尝试不同尺寸的耳塞后重新检测。</string>
+    <string name="fit_detection_complete">完成</string>
+    <string name="fit_detection_no_device">请戴上双耳耳机</string>
     <string name="fit_detection_failed">检测失败，请重试。</string>
     <string name="fit_detection_unsupported">当前型号未声明支持耳塞贴合度检测。</string>
 

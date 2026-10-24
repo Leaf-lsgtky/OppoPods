@@ -1,5 +1,6 @@
 package moe.chenxy.oppopods.ui
 
+import android.graphics.BitmapFactory
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -17,33 +18,45 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.CalibrationState
 import moe.chenxy.oppopods.pods.FitQuality
+import moe.chenxy.oppopods.pods.PodImageSlot
+import moe.chenxy.oppopods.pods.PodImageStore
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private val FitGoodColor = Color(0xFF2FB344)
@@ -51,10 +64,60 @@ private val FitFairColor = Color(0xFFE79B24)
 private val FitPoorColor = Color(0xFFE1473F)
 
 /**
- * 耳塞贴合度检测。
- *
- * 检测流程由 [moe.chenxy.oppopods.pods.CalibrationEngine] 驱动：
- * 佩戴确认 → 0x0405 开始 → 事件 4 左右结果 → 0x0405 停止。
+ * 全屏高度的贴合度检测抽屉（OverlayBottomSheet）。
+ * 对齐欢律官方流程与布局规范。
+ */
+@Composable
+fun FitTestSheet(
+    show: Boolean,
+    onDismissRequest: () -> Unit,
+    state: CalibrationState,
+    supported: Boolean,
+    onStart: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+
+    OverlayBottomSheet(
+        show = show,
+        insideMargin = DpSize(0.dp, 0.dp),
+        onDismissRequest = onDismissRequest,
+        startAction = {
+            TextButton(
+                text = stringResource(R.string.fit_detection_complete),
+                onClick = onDismissRequest,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        },
+        title = stringResource(R.string.fit_detection_title),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(screenHeight)
+                .statusBarsPadding(),
+        ) {
+            FitTestContent(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                state = state,
+                supported = supported,
+            )
+
+            FitTestBottomBar(
+                state = state,
+                supported = supported,
+                onStart = onStart,
+                onCancel = onCancel,
+            )
+        }
+    }
+}
+
+/**
+ * 贴合度独立页面（二级路由回退兜底）。
  */
 @Composable
 fun FitTestPage(
@@ -65,118 +128,174 @@ fun FitTestPage(
     onStart: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(contentPadding),
+    ) {
+        FitTestContent(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            state = state,
+            supported = supported,
+        )
+
+        FitTestBottomBar(
+            state = state,
+            supported = supported,
+            onStart = onStart,
+            onCancel = onCancel,
+        )
+    }
+}
+
+/**
+ * 贴合度核心视图内容（卡片、耳机图片、状态徽章与详细结果）。
+ */
+@Composable
+private fun FitTestContent(
+    modifier: Modifier = Modifier,
+    state: CalibrationState,
+    supported: Boolean,
+) {
     val busy = state.stage == CalibrationState.STAGE_CHECKING_WEAR ||
             state.stage == CalibrationState.STAGE_FITTING
     val showResult = state.stage == CalibrationState.STAGE_FIT_RESULT &&
             state.fitLeft != null && state.fitRight != null
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = contentPadding,
+    val leftBitmap = rememberEarbudBitmap(PodImageSlot.ISLAND_LEFT)
+    val rightBitmap = rememberEarbudBitmap(PodImageSlot.ISLAND_RIGHT)
+
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        item {
+        // 顶部说明文案
+        Text(
+            text = if (showResult) {
+                stringResource(R.string.fit_detection_summary)
+            } else {
+                stringResource(R.string.fit_detection_hint)
+            },
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            lineHeight = 20.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+        )
+
+        // 主展示卡片：左右耳机图 + 佩戴/贴合状态提示
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                    .padding(vertical = 24.dp, horizontal = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = stringResource(R.string.fit_detection_title),
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MiuixTheme.colorScheme.onBackground,
+                EarbudPair(
+                    busy = busy,
+                    leftStatus = if (showResult) state.fitLeft else null,
+                    rightStatus = if (showResult) state.fitRight else null,
+                    leftBitmap = leftBitmap,
+                    rightBitmap = rightBitmap,
                 )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = stringResource(R.string.fit_detection_summary),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-        }
 
-        item {
-            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp, horizontal = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    EarbudPair(
-                        busy = busy,
-                        leftStatus = if (showResult) state.fitLeft else null,
-                        rightStatus = if (showResult) state.fitRight else null,
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Text(
-                        text = when {
-                            !supported -> stringResource(R.string.fit_detection_unsupported)
-                            busy && state.stage == CalibrationState.STAGE_CHECKING_WEAR ->
-                                stringResource(R.string.fit_detection_checking_wear)
-                            busy -> stringResource(R.string.fit_detection_detecting) +
-                                    "\n" + stringResource(R.string.fit_detection_keep_on)
-                            showResult && state.fitLeft == FitQuality.GOOD &&
-                                    state.fitRight == FitQuality.GOOD ->
-                                stringResource(R.string.fit_detection_result_good_title)
-                            showResult -> stringResource(R.string.fit_detection_result_adjust)
-                            state.stage == CalibrationState.STAGE_ERROR ->
-                                state.message ?: stringResource(R.string.fit_detection_failed)
-                            else -> stringResource(R.string.fit_detection_hint)
-                        },
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
-        }
-
-        if (showResult) {
-            item {
-                Card(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        FitResultRow(
-                            label = stringResource(R.string.fit_detection_left),
-                            status = state.fitLeft,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        FitResultRow(
-                            label = stringResource(R.string.fit_detection_right),
-                            status = state.fitRight,
-                        )
+                val promptText = when {
+                    !supported -> stringResource(R.string.fit_detection_unsupported)
+                    busy && state.stage == CalibrationState.STAGE_CHECKING_WEAR ->
+                        stringResource(R.string.fit_detection_checking_wear)
+                    busy -> stringResource(R.string.fit_detection_detecting) +
+                            "\n" + stringResource(R.string.fit_detection_keep_on)
+                    showResult -> when {
+                        state.fitLeft == FitQuality.GOOD && state.fitRight == FitQuality.GOOD ->
+                            stringResource(R.string.fit_detection_result_good_title)
+                        state.fitLeft != FitQuality.GOOD && state.fitRight == FitQuality.GOOD ->
+                            stringResource(R.string.fit_detection_result_adjust_left)
+                        state.fitLeft == FitQuality.GOOD && state.fitRight != FitQuality.GOOD ->
+                            stringResource(R.string.fit_detection_result_adjust_right)
+                        else ->
+                            stringResource(R.string.fit_detection_result_adjust_both)
                     }
+                    state.stage == CalibrationState.STAGE_ERROR ->
+                        state.message ?: stringResource(R.string.fit_detection_failed)
+                    else -> null
+                }
+
+                if (promptText != null) {
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        text = promptText,
+                        fontSize = 14.sp,
+                        fontWeight = if (showResult) FontWeight.Medium else FontWeight.Normal,
+                        textAlign = TextAlign.Center,
+                        color = if (showResult) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
                 }
             }
         }
 
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (busy) {
-                    TextButton(
-                        text = stringResource(R.string.cancel),
-                        onClick = onCancel,
-                        modifier = Modifier.weight(1f),
+        // 测试完成后的详细条目卡片
+        if (showResult) {
+            Spacer(Modifier.height(12.dp))
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    FitResultRow(
+                        label = stringResource(R.string.fit_detection_left),
+                        status = state.fitLeft,
                     )
-                } else {
-                    TextButton(
-                        text = if (showResult) stringResource(R.string.fit_detection_retry)
-                        else stringResource(R.string.fit_detection_start),
-                        onClick = onStart,
-                        enabled = supported,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                    Spacer(Modifier.height(12.dp))
+                    FitResultRow(
+                        label = stringResource(R.string.fit_detection_right),
+                        status = state.fitRight,
                     )
                 }
             }
+        }
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/**
+ * 底部操作栏。遵循双按钮左右全宽、单按钮纵向全宽规范。
+ */
+@Composable
+private fun FitTestBottomBar(
+    state: CalibrationState,
+    supported: Boolean,
+    onStart: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val busy = state.stage == CalibrationState.STAGE_CHECKING_WEAR ||
+            state.stage == CalibrationState.STAGE_FITTING
+    val showResult = state.stage == CalibrationState.STAGE_FIT_RESULT &&
+            state.fitLeft != null && state.fitRight != null
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .navigationBarsPadding(),
+    ) {
+        if (busy) {
+            TextButton(
+                text = stringResource(R.string.cancel),
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            TextButton(
+                text = if (showResult) stringResource(R.string.fit_detection_retry)
+                else stringResource(R.string.fit_detection_start),
+                onClick = onStart,
+                enabled = supported,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
         }
     }
 }
@@ -186,6 +305,8 @@ private fun EarbudPair(
     busy: Boolean,
     leftStatus: Int?,
     rightStatus: Int?,
+    leftBitmap: ImageBitmap?,
+    rightBitmap: ImageBitmap?,
 ) {
     val transition = rememberInfiniteTransition(label = "fit_pulse")
     val pulse by transition.animateFloat(
@@ -197,17 +318,22 @@ private fun EarbudPair(
         ),
         label = "fit_pulse_alpha",
     )
+
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EarbudColumn(
-            imageRes = R.drawable.melody_ear_left,
+            bitmap = leftBitmap,
+            fallbackRes = R.drawable.melody_ear_left,
+            earLabel = "L",
             modifier = Modifier.alpha(if (busy) pulse else 1f),
             status = leftStatus,
         )
         EarbudColumn(
-            imageRes = R.drawable.melody_ear_right,
+            bitmap = rightBitmap,
+            fallbackRes = R.drawable.melody_ear_right,
+            earLabel = "R",
             modifier = Modifier.alpha(if (busy) pulse else 1f),
             status = rightStatus,
         )
@@ -216,27 +342,41 @@ private fun EarbudPair(
 
 @Composable
 private fun EarbudColumn(
-    imageRes: Int,
+    bitmap: ImageBitmap?,
+    fallbackRes: Int,
+    earLabel: String,
     modifier: Modifier = Modifier,
     status: Int?,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .size(width = 120.dp, height = 180.dp)
+                .size(width = 124.dp, height = 184.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.04f)),
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                painter = painterResource(imageRes),
-                contentDescription = null,
-                modifier = Modifier.size(width = 104.dp, height = 164.dp),
-                contentScale = ContentScale.Fit,
-            )
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier.size(width = 108.dp, height = 168.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Image(
+                    painter = painterResource(fallbackRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(width = 108.dp, height = 168.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
+
+        Spacer(Modifier.height(10.dp))
+
         if (status != null) {
-            Spacer(Modifier.height(8.dp))
+            // 测试结果药丸徽章
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
@@ -248,6 +388,22 @@ private fun EarbudColumn(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = fitColor(status),
+                )
+            }
+        } else {
+            // 初始未测时的 L / R 标识圈
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = earLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
         }
@@ -278,6 +434,19 @@ private fun FitResultRow(label: String, status: Int) {
             fontSize = 14.sp,
             color = fitColor(status),
         )
+    }
+}
+
+@Composable
+private fun rememberEarbudBitmap(slot: PodImageSlot): ImageBitmap? {
+    val context = LocalContext.current
+    val file = remember(context, slot) { PodImageStore.resolvedFile(context, slot) }
+    return remember(file?.lastModified()) {
+        file?.takeIf { it.isFile && it.length() > 0 }?.let {
+            runCatching {
+                BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap()
+            }.getOrNull()
+        }
     }
 }
 

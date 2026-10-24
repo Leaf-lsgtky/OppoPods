@@ -1038,6 +1038,7 @@ fun MainUI(
                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
                 label = "connectPressScale",
             )
+            var showFitTestSheet by remember { mutableStateOf(false) }
             MainShell(
                 floatingNavbar = themeConfig.value.floatingNavbar,
                 liquidGlass = themeConfig.value.liquidGlass,
@@ -1169,7 +1170,7 @@ fun MainUI(
                                 fitDetectionVisible = activeProfile.value.fitDetectionVisible,
                                 hearingEnhancementVisible = activeProfile.value.hearingEnhancementVisible,
                                 hearingName = displayCalibration.currentName,
-                                onOpenFitTest = { backStack.add(Screen.FitTest) },
+                                onOpenFitTest = { showFitTestSheet = true },
                                 onOpenHearing = { backStack.add(Screen.Hearing) },
                                 autoPlayPauseVisible = activeProfile.value.autoPlayPauseVisible,
                                 autoPlayPause = displayAutoPlayPause,
@@ -1279,6 +1280,20 @@ fun MainUI(
                     )
                     }
                 },
+            )
+
+            FitTestSheet(
+                show = showFitTestSheet,
+                onDismissRequest = {
+                    if (displayCalibration.isBusy) {
+                        dispatchCalibration(CalibrationCommand.CANCEL)
+                    }
+                    showFitTestSheet = false
+                },
+                state = displayCalibration,
+                supported = activeProfile.value.fitDetectionVisible,
+                onStart = { dispatchCalibration(CalibrationCommand.START_FIT) },
+                onCancel = { dispatchCalibration(CalibrationCommand.CANCEL) },
             )
         }
         entry<Screen.DevicePicker> {
