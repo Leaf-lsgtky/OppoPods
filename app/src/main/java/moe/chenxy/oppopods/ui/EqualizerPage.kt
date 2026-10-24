@@ -1,6 +1,12 @@
 package moe.chenxy.oppopods.ui
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,21 +15,41 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.EqDefaults
@@ -33,26 +59,25 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.VerticalSlider
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
-import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.RadioButtonLocation
-import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 音效页的一级页面：内置预设和设备端自定义预设都以单选列表呈现。
- * 自定义预设的编辑器由本文件内的 [EqualizerEditPage] 从底部弹出。
+ * 音效/大师调音页的一级页面：内置预设和设备端自定义预设以卡片单选列表呈现。
+ * 自定义预设的编辑器由 [EqualizerEditPage] 从底部以波形曲线图抽屉弹出。
  */
 @Composable
 fun EqualizerPage(
@@ -64,7 +89,6 @@ fun EqualizerPage(
     customEqVisible: Boolean,
     customEqFrequencies: List<Int> = emptyList(),
     customEqMaxPresets: Int = 0,
-    isEditing: Boolean = false,
     onSelectPreset: (Int) -> Unit = {},
     onOpenCustomEq: (EqDevicePreset) -> Unit = { onSelectPreset(it.id) },
     onSavePreset: (Int, String, List<Int>, List<Int>, Int, Int) -> Unit =
@@ -89,15 +113,10 @@ fun EqualizerPage(
     var renameName by remember { mutableStateOf("") }
 
     fun openCustomEditor(preset: EqDevicePreset) {
-        // The host owns the actual protocol operation (selecting the preset). The
-        // editor itself remains local to this page so opening it does not add a
-        // navigation destination.
         onOpenCustomEq(preset)
         editorState = createEditorState(preset, customEqFrequencies)
     }
 
-    // A newly-created preset does not have an id until the earphone responds.
-    // Once it appears in the refreshed list, select it and open the editor.
     LaunchedEffect(devicePresets, pendingCreationName) {
         val name = pendingCreationName ?: return@LaunchedEffect
         val created = devicePresets.firstOrNull {
@@ -127,10 +146,23 @@ fun EqualizerPage(
                         .padding(bottom = 12.dp),
                 ) {
                     builtInPresets.forEach { preset ->
-                        EqualizerPresetRow(
+                        val showDynaudio = preset.tag == 3 ||
+                                preset.name.contains("Dynaudio", ignoreCase = true) ||
+                                preset.name.contains("丹拿")
+                        val isSelected = preset.id == selectedId
+                        BasicComponent(
                             title = preset.name,
-                            selected = preset.id == selectedId,
+                            summary = getPresetSummary(preset),
                             onClick = { onSelectPreset(preset.id) },
+                            endActions = {
+                                if (showDynaudio) {
+                                    DynaudioBadge(modifier = Modifier.padding(end = 12.dp))
+                                }
+                                Checkbox(
+                                    state = if (isSelected) ToggleableState.On else ToggleableState.Off,
+                                    onClick = { onSelectPreset(preset.id) },
+                                )
+                            },
                         )
                     }
                 }
@@ -147,7 +179,7 @@ fun EqualizerPage(
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp),
                 ) {
-                    if (customPresets.isEmpty()) {
+                    if (customPresets.isEmpty() && !canCreate) {
                         Text(
                             text = stringResource(R.string.eq_no_presets),
                             modifier = Modifier.padding(16.dp),
@@ -155,37 +187,51 @@ fun EqualizerPage(
                         )
                     }
                     customPresets.forEach { preset ->
-                        EqualizerPresetRow(
+                        val isSelected = preset.id == selectedId
+                        BasicComponent(
                             title = preset.name,
-                            selected = preset.id == selectedId,
                             onClick = { openCustomEditor(preset) },
-                            onDelete = if (isEditing) {
-                                { deleteTarget = preset }
-                            } else {
-                                null
+                            endActions = {
+                                IconButton(
+                                    onClick = { deleteTarget = preset },
+                                    modifier = Modifier.padding(end = 4.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Delete,
+                                        contentDescription = stringResource(R.string.eq_delete),
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                                Checkbox(
+                                    state = if (isSelected) ToggleableState.On else ToggleableState.Off,
+                                    onClick = { openCustomEditor(preset) },
+                                )
                             },
                         )
                     }
-                }
-            }
-            item(key = "add_eq") {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp),
-                ) {
-                    BasicComponent(
-                        modifier = Modifier.fillMaxWidth(),
-                        title = stringResource(R.string.eq_add),
-                        titleColor = BasicComponentDefaults.titleColor(
-                            color = MiuixTheme.colorScheme.primary,
-                        ),
-                        enabled = canCreate,
-                        onClick = {
-                            newName = ""
-                            showNewDialog = true
-                        },
-                    )
+                    if (canCreate) {
+                        if (customPresets.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(0.5.dp)
+                                    .padding(horizontal = 16.dp)
+                                    .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            )
+                        }
+                        BasicComponent(
+                            modifier = Modifier.fillMaxWidth(),
+                            title = stringResource(R.string.eq_add),
+                            titleColor = BasicComponentDefaults.titleColor(
+                                color = MiuixTheme.colorScheme.primary,
+                            ),
+                            enabled = canCreate,
+                            onClick = {
+                                newName = ""
+                                showNewDialog = true
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -307,7 +353,19 @@ fun EqualizerPage(
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    editorState = editorState?.copy(name = renameName.trim())
+                    val updatedName = renameName.trim()
+                    editorState?.let { current ->
+                        val newState = current.copy(name = updatedName)
+                        editorState = newState
+                        onSavePreset(
+                            newState.preset.id,
+                            newState.name,
+                            newState.frequencies,
+                            newState.gains,
+                            newState.minValue,
+                            newState.maxValue,
+                        )
+                    }
                     showRenameDialog = false
                 },
             )
@@ -332,40 +390,42 @@ fun EqualizerPage(
                     state.minValue,
                     state.maxValue,
                 )
-                editorState = null
             }
         },
     )
 }
 
-/** 单个预设行：使用 Miuix 原生 RadioButtonPreference，单选勾保持在右侧，编辑模式下右侧额外显示删除按钮。 */
+/** 丹拿特调角标 */
 @Composable
-private fun EqualizerPresetRow(
-    title: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onDelete: (() -> Unit)? = null,
-) {
-    RadioButtonPreference(
-        title = title,
-        selected = selected,
-        onClick = onClick,
-        radioButtonLocation = RadioButtonLocation.End,
-        endActions = {
-            if (onDelete != null) {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = MiuixIcons.Close,
-                        contentDescription = stringResource(R.string.eq_delete),
-                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
-        },
-    )
+fun DynaudioBadge(modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(3.dp),
+        color = Color(0xFF007AFF),
+        modifier = modifier,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "CO-CREATED WITH",
+                color = Color.White,
+                fontSize = 6.sp,
+                lineHeight = 7.sp,
+                fontWeight = FontWeight.Normal,
+            )
+            Text(
+                text = "DYNAUDIO",
+                color = Color.White,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
 }
 
-/** 编辑器的临时状态；只有点击“保存”才会写回耳机。 */
+/** 编辑器的临时状态 */
 private data class EqEditorState(
     val preset: EqDevicePreset,
     val name: String,
@@ -385,7 +445,8 @@ private fun createEditorState(
     val minValue = preset.minValue.coerceAtMost(preset.maxValue)
     val maxValue = preset.maxValue.coerceAtLeast(minValue)
     val gains = frequencies.mapIndexed { index, _ ->
-        preset.gains.getOrNull(index)?.coerceIn(minValue, maxValue) ?: 0.coerceIn(minValue, maxValue)
+        preset.gains.getOrNull(index)?.coerceIn(minValue, maxValue)
+            ?: 0.coerceIn(minValue, maxValue)
     }
     return EqEditorState(
         preset = preset,
@@ -399,7 +460,7 @@ private fun createEditorState(
 
 /**
  * 二级均衡器编辑页，作为 OverlayBottomSheet 从底部弹出。
- * 顶部提供重命名，底部提供关闭和保存；滑块改动只保存在本地编辑状态中。
+ * 顶部左侧为关闭图标按钮，中间为方案名称及类似黄金听感的编辑图标；中下部为带留白的平滑波形曲线图。
  */
 @Composable
 private fun EqualizerEditPage(
@@ -411,40 +472,65 @@ private fun EqualizerEditPage(
 ) {
     OverlayBottomSheet(
         show = state != null,
-        title = state?.name,
         insideMargin = DpSize(0.dp, 0.dp),
-        onDismissRequest = onDismissRequest,
+        onDismissRequest = {
+            onSave()
+            onDismissRequest()
+        },
         startAction = {
             IconButton(
-                onClick = onDismissRequest,
-                modifier = Modifier.padding(start = 12.dp),
+                onClick = {
+                    onSave()
+                    onDismissRequest()
+                },
+                modifier = Modifier.padding(start = 8.dp),
             ) {
                 Icon(
                     imageVector = MiuixIcons.Close,
                     contentDescription = stringResource(R.string.eq_close),
+                    tint = MiuixTheme.colorScheme.onSurface,
                 )
             }
         },
         endAction = {
-            Row(modifier = Modifier.padding(end = 12.dp)) {
-                IconButton(onClick = onRename) {
-                    Icon(
-                        imageVector = MiuixIcons.Edit,
-                        contentDescription = stringResource(R.string.eq_rename),
-                    )
-                }
-                IconButton(onClick = onSave) {
-                    Icon(
-                        imageVector = MiuixIcons.Ok,
-                        contentDescription = stringResource(R.string.eq_save),
-                    )
-                }
-            }
+            // 平衡顶栏间距，保持中间标题绝对居中
+            Spacer(Modifier.width(48.dp))
         },
     ) {
         state?.let { current ->
-            Column(modifier = Modifier.fillMaxWidth()) {
-                EqualizerSliderPanel(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // 方案名称与右侧小号编辑图标（对齐黄金听感样式）
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onRename() }
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = current.name,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = MiuixIcons.Edit,
+                        contentDescription = stringResource(R.string.eq_rename),
+                        tint = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                InteractiveEqualizerCurveView(
                     frequencies = current.frequencies,
                     gains = current.gains,
                     minValue = current.minValue,
@@ -454,21 +540,42 @@ private fun EqualizerEditPage(
                         updatedGains[index] = value
                         onStateChange(current.copy(gains = updatedGains))
                     },
+                    onDragEnd = onSave,
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                Spacer(Modifier.height(24.dp))
             }
         }
     }
 }
 
-/** 六段竖直均衡器：滑块内部使用 0..1，再映射到设备的 dB 范围。 */
+private data class ChartBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+)
+
+/**
+ * 仿官方 HeyMelody 的可拖拽交互式均衡器波形曲线图。
+ *
+ * 具有充足的呼吸留白：
+ * - 顶部留白充足，实时蓝色增益数字不贴顶
+ * - 左右有对称网格边距，首尾频段节点不贴边
+ * - 背景水平参考线（+6 dB、0 dB、-6 dB）与各频段竖直网格线
+ * - 曲线下方半透明渐变区域填充（Area Fill）
+ * - 平滑三次贝塞尔连续曲线
+ * - 各频段可拖拽/触控节点圆点（白底蓝边），带触感震动反馈
+ * - 底部频率文字（62、250、1k、4k、8k、16k）及“低频”/“高频”标注
+ */
 @Composable
-private fun EqualizerSliderPanel(
+private fun InteractiveEqualizerCurveView(
     frequencies: List<Int>,
     gains: List<Int>,
     minValue: Int,
     maxValue: Int,
     onGainChange: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (frequencies.isEmpty()) return
 
@@ -476,105 +583,330 @@ private fun EqualizerSliderPanel(
     val upper = maxValue.coerceAtLeast(lower)
     val range = (upper - lower).coerceAtLeast(1).toFloat()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            // 全局 dB 纵轴：与滑块轨道等高对齐，占位文本保证与每列标签同构。
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(text = "", fontSize = 13.sp)
-                Spacer(Modifier.height(4.dp))
-                Column(
-                    modifier = Modifier.height(180.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = formatDbValue(upper),
-                        fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = formatDbValue(0.coerceIn(lower, upper)),
-                        fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = formatDbValue(lower),
-                        fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(text = "", fontSize = 12.sp)
+    val haptic = LocalHapticFeedback.current
+    val primaryColor = MiuixTheme.colorScheme.primary
+    val labelColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val gridColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val centerLineColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+
+    val textMeasurer = rememberTextMeasurer()
+    val lowFreqLabel = stringResource(R.string.eq_low_freq)
+    val highFreqLabel = stringResource(R.string.eq_high_freq)
+
+    val currentGains by rememberUpdatedState(gains)
+    val currentFrequencies by rememberUpdatedState(frequencies)
+    val currentOnGainChange by rememberUpdatedState(onGainChange)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    var chartLayoutBounds by remember { mutableStateOf<ChartBounds?>(null) }
+
+    val gainTextStyle = remember(primaryColor) {
+        TextStyle(
+            color = primaryColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
+    }
+
+    val scaleTextStyle = remember(labelColor) {
+        TextStyle(
+            color = labelColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.End,
+        )
+    }
+
+    val freqTextStyle = remember(labelColor) {
+        TextStyle(
+            color = labelColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+        )
+    }
+
+    val subFreqTextStyle = remember(labelColor) {
+        TextStyle(
+            color = labelColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+        )
+    }
+
+    fun handleTouch(touchX: Float, touchY: Float): Int? {
+        val bounds = chartLayoutBounds ?: return null
+        val n = currentFrequencies.size
+        if (n < 2) return null
+        val step = (bounds.right - bounds.left) / (n - 1)
+
+        val closestIndex = currentFrequencies.indices.minByOrNull { i ->
+            val colX = bounds.left + i * step
+            (colX - touchX).absoluteValue
+        } ?: return null
+
+        val colX = bounds.left + closestIndex * step
+        if ((colX - touchX).absoluteValue <= step * 0.75f) {
+            val normalized = 1f - ((touchY - bounds.top) / (bounds.bottom - bounds.top)).coerceIn(0f, 1f)
+            val newGain = (lower + normalized * range).roundToInt().coerceIn(lower, upper)
+            if (newGain != currentGains.getOrNull(closestIndex)) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                currentOnGainChange(closestIndex, newGain)
             }
+            return closestIndex
+        }
+        return null
+    }
 
-            Spacer(Modifier.width(8.dp))
-
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                frequencies.forEachIndexed { index, frequency ->
-                    val gain =
-                        gains.getOrNull(index)?.coerceIn(lower, upper) ?: 0.coerceIn(lower, upper)
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = formatGainValue(gain),
-                            fontSize = 13.sp,
-                            color = MiuixTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        VerticalSlider(
-                            value = ((gain - lower) / range).coerceIn(0f, 1f),
-                            onValueChange = { normalized ->
-                                onGainChange(
-                                    index,
-                                    (lower + normalized.coerceIn(0f, 1f) * range)
-                                        .roundToInt()
-                                        .coerceIn(lower, upper),
-                                )
-                            },
-                            valueRange = 0f..1f,
-                            modifier = Modifier.height(180.dp),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = formatFrequency(frequency),
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            textAlign = TextAlign.Center,
-                        )
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .pointerInput(frequencies.size, lower, upper) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val activeIndex = handleTouch(down.position.x, down.position.y)
+                    if (activeIndex != null) {
+                        down.consume()
+                        val pointerId = down.id
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                            if (!change.pressed) {
+                                currentOnDragEnd()
+                                break
+                            }
+                            change.consume()
+                            val bounds = chartLayoutBounds ?: continue
+                            val normalized = 1f - ((change.position.y - bounds.top) / (bounds.bottom - bounds.top)).coerceIn(0f, 1f)
+                            val newGain = (lower + normalized * range).roundToInt().coerceIn(lower, upper)
+                            if (newGain != currentGains.getOrNull(activeIndex)) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentOnGainChange(activeIndex, newGain)
+                            }
+                        }
                     }
                 }
             }
+    ) {
+        val leftMargin = 54.dp.toPx()
+        val rightMargin = 28.dp.toPx()
+        val topMargin = 38.dp.toPx()
+        val bottomMargin = 56.dp.toPx()
+
+        val chartLeft = leftMargin
+        val chartRight = size.width - rightMargin
+        val chartTop = topMargin
+        val chartBottom = size.height - bottomMargin
+        val chartWidth = chartRight - chartLeft
+        val chartHeight = chartBottom - chartTop
+
+        chartLayoutBounds = ChartBounds(chartLeft, chartTop, chartRight, chartBottom)
+
+        val n = currentFrequencies.size
+        val step = if (n > 1) chartWidth / (n - 1) else 0f
+
+        // 1. 左侧刻度数值（+6 dB, 0 dB, -6 dB）
+        val maxLabel = formatDbValue(upper)
+        val maxMeas = textMeasurer.measure(maxLabel, scaleTextStyle)
+        drawText(
+            textLayoutResult = maxMeas,
+            topLeft = Offset(chartLeft - maxMeas.size.width - 10.dp.toPx(), chartTop - maxMeas.size.height / 2f),
+        )
+
+        val zeroRatio = ((0 - lower) / range).coerceIn(0f, 1f)
+        val zeroY = chartBottom - zeroRatio * chartHeight
+        val zeroLabel = formatDbValue(0.coerceIn(lower, upper))
+        val zeroMeas = textMeasurer.measure(zeroLabel, scaleTextStyle)
+        drawText(
+            textLayoutResult = zeroMeas,
+            topLeft = Offset(chartLeft - zeroMeas.size.width - 10.dp.toPx(), zeroY - zeroMeas.size.height / 2f),
+        )
+
+        val minLabel = formatDbValue(lower)
+        val minMeas = textMeasurer.measure(minLabel, scaleTextStyle)
+        drawText(
+            textLayoutResult = minMeas,
+            topLeft = Offset(chartLeft - minMeas.size.width - 10.dp.toPx(), chartBottom - minMeas.size.height / 2f),
+        )
+
+        // 2. 水平参考线
+        drawLine(
+            color = gridColor,
+            start = Offset(chartLeft, chartTop),
+            end = Offset(chartRight, chartTop),
+            strokeWidth = 1.dp.toPx(),
+        )
+        drawLine(
+            color = centerLineColor,
+            start = Offset(chartLeft, zeroY),
+            end = Offset(chartRight, zeroY),
+            strokeWidth = 1.dp.toPx(),
+        )
+        drawLine(
+            color = gridColor,
+            start = Offset(chartLeft, chartBottom),
+            end = Offset(chartRight, chartBottom),
+            strokeWidth = 1.dp.toPx(),
+        )
+
+        // 3. 各频段竖直参考网格线
+        for (i in 0 until n) {
+            val colX = chartLeft + i * step
+            drawLine(
+                color = gridColor,
+                start = Offset(colX, chartTop),
+                end = Offset(colX, chartBottom),
+                strokeWidth = 1.dp.toPx(),
+            )
         }
 
-        Spacer(Modifier.height(8.dp))
+        // 4. 计算各节点坐标
+        val points = mutableListOf<Offset>()
+        for (i in 0 until n) {
+            val colX = chartLeft + i * step
+            val gain = currentGains.getOrNull(i) ?: 0
+            val normalized = ((gain - lower) / range).coerceIn(0f, 1f)
+            val ptY = chartBottom - normalized * chartHeight
+            points.add(Offset(colX, ptY))
+        }
+
+        // 5. 绘制平滑波形曲线与渐变区域（Cubic Spline）
+        if (points.isNotEmpty()) {
+            val curvePath = Path()
+            curvePath.moveTo(points[0].x, points[0].y)
+
+            val fillPath = Path()
+            fillPath.moveTo(points[0].x, chartBottom)
+            fillPath.lineTo(points[0].x, points[0].y)
+
+            for (i in 0 until points.size - 1) {
+                val p0 = if (i > 0) points[i - 1] else points[i]
+                val p1 = points[i]
+                val p2 = points[i + 1]
+                val p3 = if (i + 2 < points.size) points[i + 2] else p2
+
+                val cp1x = p1.x + (p2.x - p0.x) / 6f
+                var cp1y = p1.y + (p2.y - p0.y) / 6f
+                val cp2x = p2.x - (p3.x - p1.x) / 6f
+                var cp2y = p2.y - (p3.y - p1.y) / 6f
+
+                if ((p2.y - p1.y).absoluteValue < 1f) {
+                    cp1y = p1.y
+                    cp2y = p2.y
+                } else {
+                    cp1y = cp1y.coerceIn(chartTop, chartBottom)
+                    cp2y = cp2y.coerceIn(chartTop, chartBottom)
+                }
+
+                curvePath.cubicTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+                fillPath.cubicTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+            }
+
+            fillPath.lineTo(points.last().x, chartBottom)
+            fillPath.close()
+
+            // 区域渐变填充
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        primaryColor.copy(alpha = 0.45f),
+                        primaryColor.copy(alpha = 0.04f),
+                    ),
+                    startY = chartTop,
+                    endY = chartBottom,
+                ),
+            )
+
+            // 波形轮廓曲线
+            drawPath(
+                path = curvePath,
+                color = primaryColor,
+                style = Stroke(
+                    width = 2.5.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                ),
+            )
+
+            // 节点触控圆点（白底蓝边）
+            points.forEach { pt ->
+                drawCircle(
+                    color = Color.White,
+                    radius = 6.dp.toPx(),
+                    center = pt,
+                )
+                drawCircle(
+                    color = primaryColor,
+                    radius = 6.dp.toPx(),
+                    center = pt,
+                    style = Stroke(width = 2.5.dp.toPx()),
+                )
+            }
+        }
+
+        // 6. 各频段顶部实时增益数字与底部频率标签
+        for (i in 0 until n) {
+            val colX = chartLeft + i * step
+            val gain = currentGains.getOrNull(i) ?: 0
+
+            // 顶部蓝色增益值
+            val gainStr = gain.toString()
+            val gainMeas = textMeasurer.measure(gainStr, gainTextStyle)
+            drawText(
+                textLayoutResult = gainMeas,
+                topLeft = Offset(colX - gainMeas.size.width / 2f, chartTop - gainMeas.size.height - 8.dp.toPx()),
+            )
+
+            // 底部频率
+            val freqStr = formatFrequency(currentFrequencies[i])
+            val freqMeas = textMeasurer.measure(freqStr, freqTextStyle)
+            drawText(
+                textLayoutResult = freqMeas,
+                topLeft = Offset(colX - freqMeas.size.width / 2f, chartBottom + 10.dp.toPx()),
+            )
+        }
+
+        // 7. 底部首尾频段的“低频”与“高频”标注
+        if (n >= 2) {
+            val lowMeas = textMeasurer.measure(lowFreqLabel, subFreqTextStyle)
+            drawText(
+                textLayoutResult = lowMeas,
+                topLeft = Offset(chartLeft - lowMeas.size.width / 2f, chartBottom + 30.dp.toPx()),
+            )
+
+            val highMeas = textMeasurer.measure(highFreqLabel, subFreqTextStyle)
+            drawText(
+                textLayoutResult = highMeas,
+                topLeft = Offset(chartRight - highMeas.size.width / 2f, chartBottom + 30.dp.toPx()),
+            )
+        }
     }
 }
 
+/** 格式化刻度 dB 文本 */
 private fun formatDbValue(value: Int): String = when {
     value > 0 -> "+$value dB"
     else -> "$value dB"
 }
 
-private fun formatGainValue(value: Int): String = when {
-    value > 0 -> "+$value"
-    else -> value.toString()
-}
-
+/** 格式化频率标签（62, 250, 1k, 4k, 8k, 16k） */
 private fun formatFrequency(frequency: Int): String = when {
     frequency >= 1000 && frequency % 1000 == 0 -> "${frequency / 1000}k"
     else -> frequency.toString()
+}
+
+/** 官方已确认的内置预设对应描述（匹配白名单中的 summaryId 1..5） */
+private fun getPresetSummary(preset: EqPreset): String? {
+    return when (preset.summaryId) {
+        1 -> "经久耐听，完美兼容多种音乐风格"
+        2 -> "清晰还原每一个乐器的细节，适合交响乐与钢琴曲"
+        3 -> "专门为表现人声所调制，适合经典流行歌曲"
+        4 -> "领略低音的量感和质感，适合电子乐与摇滚乐"
+        5 -> "还原经典丹拿音响的原生音色"
+        else -> null
+    }
 }

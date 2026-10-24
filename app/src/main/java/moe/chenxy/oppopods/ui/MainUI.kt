@@ -1159,6 +1159,11 @@ fun MainUI(
                                 gameModeVisible = activeProfile.value.gameModeVisible,
                                 eqVisible = activeProfile.value.eqPresets.isNotEmpty() ||
                                         activeProfile.value.customEqVisible,
+                                eqTitle = if (activeProfile.value.eqPresets.any { it.tag == 3 }) {
+                                    stringResource(R.string.eq_master_tuning)
+                                } else {
+                                    stringResource(R.string.sound_effects)
+                                },
                                 eqCurrentName = displayEqCurrentName,
                                 onOpenEqualizer = { backStack.add(Screen.Equalizer) },
                                 spatialAudioMode = displaySpatialAudioMode,
@@ -1317,39 +1322,16 @@ fun MainUI(
             }
         }
         entry<Screen.Equalizer> {
-            var isEqEditing by remember { mutableStateOf(false) }
+            val isDynaudio = activeProfile.value.eqPresets.any { it.tag == 3 }
+            val pageTitle = if (isDynaudio) {
+                stringResource(R.string.eq_master_tuning)
+            } else {
+                stringResource(R.string.sound_effects)
+            }
 
             SecondaryPageScaffold(
-                title = stringResource(R.string.sound_effects),
-                onBack = {
-                    if (isEqEditing) isEqEditing = false
-                    else backStack.removeLast()
-                },
-                actions = {
-                    if (activeProfile.value.customEqVisible) {
-                        if (isEqEditing) {
-                            TextButton(
-                                text = stringResource(R.string.done),
-                                onClick = { isEqEditing = false },
-                            )
-                        } else {
-                            val editEntry = DropdownEntry(
-                                items = listOf(
-                                    DropdownItem(
-                                        text = stringResource(R.string.eq_edit),
-                                        onClick = { isEqEditing = true },
-                                    )
-                                )
-                            )
-                            OverlayIconDropdownMenu(entry = editEntry) {
-                                Icon(
-                                    imageVector = MiuixIcons.More,
-                                    contentDescription = stringResource(R.string.eq_edit)
-                                )
-                            }
-                        }
-                    }
-                },
+                title = pageTitle,
+                onBack = { backStack.removeLast() },
             ) { padding, behavior ->
                 EqualizerPage(
                     modifier = Modifier
@@ -1362,7 +1344,6 @@ fun MainUI(
                     customEqVisible = activeProfile.value.customEqVisible,
                     customEqFrequencies = activeProfile.value.customEqFrequencies,
                     customEqMaxPresets = activeProfile.value.customEqMaxPresets,
-                    isEditing = isEqEditing,
                     onSelectPreset = { setEqPreset(it) },
                     onOpenCustomEq = { preset -> setEqPreset(preset.id) },
                     onSavePreset = { id, name, frequencies, gains, minValue, maxValue ->

@@ -12,6 +12,7 @@
     <string name="game_mode_implementation_standard">Standard</string>
     <string name="game_mode_implementation_compatible">Compatible</string>
     <string name="sound_effects">Sound effects</string>
+    <string name="eq_master_tuning">Master Tuning</string>
     <string name="eq_preset">Preset</string>
     <string name="eq_new">New preset</string>
     <string name="eq_new_title">New custom preset</string>

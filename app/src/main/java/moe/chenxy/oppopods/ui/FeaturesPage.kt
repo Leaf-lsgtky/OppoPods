@@ -29,6 +29,7 @@ fun FeaturesPage(
     onGameModeChange: (Boolean) -> Unit = {},
     gameModeVisible: Boolean = true,
     eqVisible: Boolean = false,
+    eqTitle: String = stringResource(R.string.sound_effects),
     eqCurrentName: String = "",
     onOpenEqualizer: () -> Unit = {},
     spatialAudioMode: Int = SpatialAudioMode.OFF,
@@ -100,7 +101,7 @@ fun FeaturesPage(
                             }
                             if (eqVisible) {
                                 ArrowPreference(
-                                    title = stringResource(R.string.sound_effects),
+                                    title = eqTitle,
                                     endActions = {
                                         if (eqCurrentName.isNotBlank()) {
                                             Text(text = eqCurrentName)

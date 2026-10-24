@@ -43,6 +43,8 @@ data class EqPreset(
     val id: Int,
     val name: String,
     val modeType: Int = -1,
+    val summaryId: Int = 0,
+    val tag: Int = 0,
 )
 
 /**

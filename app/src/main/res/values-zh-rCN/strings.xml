@@ -13,6 +13,7 @@
     <string name="game_mode_implementation_standard">标准</string>
     <string name="game_mode_implementation_compatible">兼容</string>
     <string name="sound_effects">音效</string>
+    <string name="eq_master_tuning">大师调音</string>
     <string name="eq_preset">预设</string>
     <string name="eq_new">新建预设</string>
     <string name="eq_new_title">新建自定义预设</string>

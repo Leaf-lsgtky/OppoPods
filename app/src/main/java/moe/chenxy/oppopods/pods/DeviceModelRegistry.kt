@@ -264,8 +264,16 @@ object DeviceModelRegistry {
                 val id = mode.optInt("protocolIndex", -1)
                 if (id < 0 || result.containsKey(id)) continue
                 val modeType = mode.optInt("modeType", -1)
+                val summaryId = mode.optInt("summaryId", 0)
+                val tag = mode.optInt("tag", 0)
                 val name = eqModeNames[modeType] ?: "M$id"
-                result[id] = EqPreset(id = id, name = name, modeType = modeType)
+                result[id] = EqPreset(
+                    id = id,
+                    name = name,
+                    modeType = modeType,
+                    summaryId = summaryId,
+                    tag = tag,
+                )
             }
         }
         return result.values.sortedBy { it.id }
