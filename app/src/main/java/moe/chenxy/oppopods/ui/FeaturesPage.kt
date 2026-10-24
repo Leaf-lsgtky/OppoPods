@@ -102,11 +102,6 @@ fun FeaturesPage(
                             if (eqVisible) {
                                 ArrowPreference(
                                     title = eqTitle,
-                                    endActions = {
-                                        if (eqCurrentName.isNotBlank()) {
-                                            Text(text = eqCurrentName)
-                                        }
-                                    },
                                     onClick = onOpenEqualizer,
                                 )
                             }

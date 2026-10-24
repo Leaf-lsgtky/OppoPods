@@ -22,8 +22,8 @@ android {
         applicationId = "moe.chenxy.oppopods"
         minSdk = 35
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.4.0"
+        versionCode = 16
+        versionName = "1.5.0"
 
         ndk {
             // Filament 是纯 native 引擎（libfilament-jni / libgltfio-jni /
