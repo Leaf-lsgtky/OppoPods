@@ -54,8 +54,12 @@ import moe.chenxy.oppopods.pods.PodImageSlot
 import moe.chenxy.oppopods.pods.PodImageStore
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -84,11 +88,15 @@ fun FitTestSheet(
         insideMargin = DpSize(0.dp, 0.dp),
         onDismissRequest = onDismissRequest,
         startAction = {
-            TextButton(
-                text = stringResource(R.string.fit_detection_complete),
+            IconButton(
                 onClick = onDismissRequest,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+                modifier = Modifier.padding(start = 12.dp),
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Close,
+                    contentDescription = stringResource(R.string.cancel),
+                )
+            }
         },
         title = stringResource(R.string.fit_detection_title),
     ) {
