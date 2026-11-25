@@ -133,6 +133,7 @@ fun HearingPage(
 ) {
     var showWizardSheet by remember { mutableStateOf(false) }
     var viewingProfile by remember { mutableStateOf<HearingProfile?>(null) }
+    val locale = LocalConfiguration.current.locales[0] ?: Locale.ROOT
 
     LaunchedEffect(state.stage) {
         if (state.stage in setOf(
@@ -199,7 +200,7 @@ fun HearingPage(
                                 HearingProfileItemRow(
                                     title = "记录 ${profile.localIndex}",
                                     subtitle = profile.name.ifBlank {
-                                        SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(
+                                        SimpleDateFormat("yyyy/MM/dd HH:mm", locale).format(
                                             Date(if (profile.savedAt > 0) profile.savedAt else System.currentTimeMillis())
                                         )
                                     },
@@ -228,7 +229,7 @@ fun HearingPage(
                         HearingProfileItemRow(
                             title = "记录 1",
                             subtitle = state.currentName.ifBlank {
-                                SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date())
+                                SimpleDateFormat("yyyy/MM/dd HH:mm", locale).format(Date())
                             },
                             isChecked = state.hearingEnabled == true,
                             enabled = supported,

@@ -88,6 +88,7 @@ object MiLinkServiceHook : HookContext() {
     override fun onHook() {
         Log.d(TAG, "MiLink hook initialized; custom placement resolver=runtime-suffix")
         hookContextEntry()
+        hookSettingsPluginCapability()
         hookMxBluetoothRuntime()
         hookHeadsetRuntimeDisplay()
         hookFindRingControllerCommand()
@@ -191,6 +192,26 @@ object MiLinkServiceHook : HookContext() {
                 }
             }.onFailure { Log.w(TAG, "hook $className.getInstanceForIsMiTWS skipped", it) }
         }
+    }
+
+    /**
+     * MiLink 18.2 的原生路由读取的是 Binder 命令 120（java 插件兼容能力），不是 getDeviceId。
+     * 只补 OPPO 的能力查询结果；switchToHeadsetActivity 和“更多设置”点击逻辑完整保留。
+     * 01010901 继续用于既有面板布局，避免更换机型后影响自定义按钮/电量面板。
+     */
+    private fun hookSettingsPluginCapability() {
+        runCatching {
+            val proxy = "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub\$Proxy"
+            hookAfter(findMethod(proxy, "setCommonCommand", Integer.TYPE, String::class.java, BluetoothDevice::class.java)) {
+                if (args[0] != 120) return@hookAfter
+                val qigsawVersion = args[1] as? String ?: return@hookAfter
+                val device = args[2] as? BluetoothDevice ?: return@hookAfter
+                if (qigsawVersion.isBlank() || !isOppoPod(device)) return@hookAfter
+                // 系统已提供 java 模块版本时，适配器为该设备实现了 Settings 插件契约。
+                result = "true"
+                Log.d(TAG, "OPPO Settings plugin capability available")
+            }
+        }.onFailure { Log.w(TAG, "hook Settings plugin capability skipped", it) }
     }
 
     private fun hookMxBluetoothRuntime() {

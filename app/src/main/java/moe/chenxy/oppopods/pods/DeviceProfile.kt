@@ -68,6 +68,14 @@ data class DeviceProfile(
         return command.toPacket()
     }
 
+    /** 设置页可用的 ANC 模式，编码与 [ancPacket] 一致；按关 / 通透 / 降噪 / 自适应排列。 */
+    fun supportedAncModes(): List<Int> = buildList {
+        if (ProfileKeys.ANC_OFF in commands) add(1)
+        if (ProfileKeys.ANC_TRANSPARENCY in commands) add(3)
+        if (ProfileKeys.ANC_NC in commands) add(2)
+        if (adaptiveVisible && ProfileKeys.ANC_ADAPTIVE in commands) add(4)
+    }
+
     /** ANC 整包，mode 用控制器的整型编码：1=关 2=降噪 3=通透 4=自适应。 */
     fun ancPacket(mode: Int): ByteArray = packet(
         when (mode) {

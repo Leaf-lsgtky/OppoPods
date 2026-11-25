@@ -219,18 +219,17 @@ fun ProfilesPage(
                     title = stringResource(R.string.official_artwork_title),
                     summary = summary,
                 )
-                val colorItems = remember(modelId, effectiveDetectedColor) {
-                    val autoLabel = if (effectiveDetectedColor != null) {
-                        val autoName = ModelColorCatalog.getColorName(modelId, effectiveDetectedColor)
-                        context.getString(R.string.official_artwork_color_auto) + " ($autoName)"
-                    } else {
-                        context.getString(R.string.official_artwork_color_auto)
-                    }
-                    if (colorOptions.isNotEmpty()) {
-                        listOf(autoLabel) + colorOptions.map { "${it.name} (${it.colorId})" }
-                    } else {
-                        listOf(autoLabel) + (0..7).map { context.getString(R.string.official_artwork_color_value, it) }
-                    }
+                val autoText = stringResource(R.string.official_artwork_color_auto)
+                val autoLabel = if (effectiveDetectedColor != null) {
+                    val autoName = ModelColorCatalog.getColorName(modelId, effectiveDetectedColor)
+                    "$autoText ($autoName)"
+                } else {
+                    autoText
+                }
+                val colorItems = if (colorOptions.isNotEmpty()) {
+                    listOf(autoLabel) + colorOptions.map { "${it.name} (${it.colorId})" }
+                } else {
+                    listOf(autoLabel) + (0..7).map { stringResource(R.string.official_artwork_color_value, it) }
                 }
                 val selectedDropdownIndex = remember(colorChoice, colorOptions) {
                     if (colorChoice < 0) {

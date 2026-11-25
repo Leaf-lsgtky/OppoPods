@@ -1,8 +1,11 @@
-# Settings 蓝牙耳机详情页"更多内容"渲染机制逆向分析
+# 历史笔记：Settings 蓝牙耳机详情页“更多内容”渲染机制
 
-> 分析对象：`jadx` MCP 加载的 `com.android.settings`（Xiaomi HyperOS），关键反编译源码见 `.workbuddy/dump/`。
-> 关联：[`hook/SettingsHeadsetHook.kt`](../app/src/main/java/moe/chenxy/oppopods/hook/SettingsHeadsetHook.kt) 现有实现；`docs/` 协议笔记。
-> 本文聚焦"设置里点开蓝牙耳机后，耳机图 / 电量 / 降噪控制等更多内容是如何被渲染出来的"。
+> **2026-11-21 校正：本页保留的是旧 Hook 的历史分析，不能作为当前实现说明。** 原文中的 `SettingsHeadsetHook` 已移除；Settings 当前入口为 [SettingsMiuiPluginHook.kt](../app/src/main/java/moe/chenxy/oppopods/hook/SettingsMiuiPluginHook.kt)（小米耳机插件页适配）。[SettingsDetailsHook.kt](../app/src/main/java/moe/chenxy/oppopods/hook/SettingsDetailsHook.kt) 已重写为标准详情页实现，但未在 [HookEntry.kt](../app/src/main/java/moe/chenxy/oppopods/hook/HookEntry.kt) 注册，暂不生效。
+> 旧文将“国产版默认设备详情页”和新版标准详情页的入口关系、配置目录和实时条目混在了一起；尤其 `DeviceSettingsConfig` 的列表元素实际是 `DeviceSettingItem`，并非 `MultiTogglePreference`。
+> 对指定 APK（版本 17 / SDK 37）的标准详情页核验见 [Settings 17 标准页记录](Settings_17_Hook_Repair.md)。用户参考图中的小米新耳机专属页属于第三条动态插件路径，准确入口、Pluto/P76S 控件和状态契约以 [小米耳机插件定位记录](Settings_MIUI_Headset_Plugin_Research.md) 为准。下文“现有 Hook”“尚未接入”等措辞仅反映历史状态。
+
+> 历史分析对象：当时 `jadx` MCP 加载的 `com.android.settings`（Xiaomi HyperOS）。
+> 原文主题：设置里的耳机图、电量与降噪控件如何渲染。
 
 ## 结论
 

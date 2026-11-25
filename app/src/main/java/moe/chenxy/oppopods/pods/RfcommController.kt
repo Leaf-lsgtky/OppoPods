@@ -419,6 +419,16 @@ object RfcommController {
                 }
             }
             OppoPodsAction.ACTION_ANC_SELECT -> {
+                if (intent.hasExtra("address")) {
+                    val requestedAddress = intent.getStringExtra("address")
+                    val currentAddress = if (::mDevice.isInitialized) mDevice.address else null
+                    if (requestedAddress.isNullOrBlank() || currentAddress == null ||
+                        !currentAddress.equals(requestedAddress, ignoreCase = true)
+                    ) {
+                        Log.d(TAG, "Ignoring ANC request for another device")
+                        return
+                    }
+                }
                 val status = intent.getIntExtra("status", 0)
                 setANCMode(status)
             }
@@ -463,8 +473,11 @@ object RfcommController {
                 setSpatialSound(enabled)
             }
             OppoPodsAction.ACTION_NOISE_LEVEL_SET -> {
+                val requestedAddress = intent.getStringExtra("address")
+                if (intent.hasExtra("address") && (requestedAddress.isNullOrBlank() ||
+                    !::mDevice.isInitialized || !mDevice.address.equals(requestedAddress, ignoreCase = true))) return
                 val level = intent.getIntExtra("level", NoiseLevel.DEEP)
-                setNoiseLevel(level)
+                if (level in NoiseLevel.ALL) setNoiseLevel(level)
             }
             OppoPodsAction.ACTION_AUTO_PLAY_PAUSE_SET -> {
                 val enabled = intent.getBooleanExtra("enabled", false)
@@ -791,11 +804,15 @@ object RfcommController {
 
     private fun broadcastResolvedProfile(profile: DeviceProfile) {
         val context = mContext ?: return
+        val profileJson = DeviceProfileStore.exportJson(profile)
         Intent(OppoPodsAction.ACTION_PODS_PROFILE_CHANGED).apply {
             setPackage(BuildConfig.APPLICATION_ID)
-            putExtra(OppoPodsAction.EXTRA_PROFILE_JSON, DeviceProfileStore.exportJson(profile))
+            putExtra(OppoPodsAction.EXTRA_PROFILE_JSON, profileJson)
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             context.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_PROFILE_CHANGED) {
+            putExtra(OppoPodsAction.EXTRA_PROFILE_JSON, profileJson)
         }
     }
 
@@ -1161,6 +1178,7 @@ object RfcommController {
                 this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 context.sendBroadcast(this)
             }
+            sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             it.unregisterReceiver(broadcastReceiver)
         }
 
