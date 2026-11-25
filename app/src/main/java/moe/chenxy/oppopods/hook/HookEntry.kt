@@ -28,7 +28,16 @@ class HookEntry : XposedModule() {
 
     override fun onHotReloaded(param: HotReloadedParam) {
         val oldHooks = param.oldHookHandles
-        val classLoader = oldHooks.firstOrNull()?.executable?.declaringClass?.classLoader
+        // 旧 handles 的顺序不保证首项属于目标 APK：状态栏/Instrumentation Hook 可能来自 boot loader。
+        // 热重载优先取当前应用 loader，否则蓝牙的 A2dpService 等类会找不到，整组 Hook 无法恢复。
+        val classLoader = runCatching {
+            val thread = Class.forName("android.app.ActivityThread")
+            val app = thread.getDeclaredMethod("currentApplication").invoke(null) as? android.app.Application
+            app?.classLoader
+        }.getOrNull() ?: oldHooks.firstOrNull {
+            it.executable.declaringClass.name.startsWith(param.processName.substringBefore(':'))
+        }?.executable?.declaringClass?.classLoader
+            ?: oldHooks.firstOrNull()?.executable?.declaringClass?.classLoader
         if (classLoader == null) {
             Log.w(TAG, "Hot reload skipped: no target class loader is available")
             return
@@ -48,7 +57,7 @@ class HookEntry : XposedModule() {
             "com.android.bluetooth" -> listOf(HeadsetStateDispatcher)
             "com.milink.service" -> listOf(MiLinkServiceHook)
             "com.xiaomi.bluetooth" -> listOf(MiBluetoothToastHook, XiaomiBluetoothHeadsetIconGuard)
-            "com.android.settings" -> listOf(SettingsDetailsHook)
+            "com.android.settings" -> listOf(SettingsMiuiPluginHook)
             else -> return
         }
         hooks.forEach { loadHook(it, classLoader) }

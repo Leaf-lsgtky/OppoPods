@@ -98,13 +98,14 @@ object HeadsetStateDispatcher : HookContext() {
                 )
             ) {
                 val device = args[0] as? BluetoothDevice ?: return@hookAfter
+                if (!isOppoPod(device)) return@hookAfter
                 val context = instance as? ContextWrapper ?: return@hookAfter
                 if (hasAnyPodProfileConnected(context)) {
                     Log.d(TAG, "LE_AUDIO disconnected but another pod profile is still up, keep RFCOMM")
                     return@hookAfter
                 }
                 oppoConnected = false
-                RfcommController.disconnectedPod(context, device)
+                RfcommController.disconnectedPod(context, classicCapablePod(context, device) ?: device)
             }
             Log.d(TAG, "hooked LeAudioService deviceConnected/deviceDisconnected for LC3-only control")
         }.onFailure { Log.w(TAG, "LE Audio hooks skipped", it) }
@@ -136,6 +137,12 @@ object HeadsetStateDispatcher : HookContext() {
             }
             Log.d(TAG, "hooked ${serviceCreateMethod.declaringClass.name}.onCreate for connected-device bootstrap")
         }.onFailure { Log.w(TAG, "hook connected-device bootstrap skipped", it) }
+
+        // API 102 热重载时 ProfileService.onCreate 不会再次执行；主动恢复已连接耳机的控制桥。
+        runCatching {
+            val application = findMethod("android.app.ActivityThread", "currentApplication").invoke(null) as? Context
+            if (application != null) scheduleConnectedDeviceBootstrap(application)
+        }.onFailure { Log.w(TAG, "hot-reload bootstrap skipped", it) }
     }
 
     override fun onHotReloading() {
@@ -249,12 +256,7 @@ object HeadsetStateDispatcher : HookContext() {
     /** LEA 掉线不等于这副耳断开：A2DP/HFP 或另一只耳的 LEA 还在时不该拆掉 RFCOMM 会话 */
     @SuppressLint("MissingPermission")
     private fun hasAnyPodProfileConnected(context: Context): Boolean {
-        val bluetoothManager = context.getSystemService(BluetoothManager::class.java) ?: return false
-        return listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
-            .any { profile ->
-                runCatching { bluetoothManager.getConnectedDevices(profile).any(::isOppoPod) }
-                    .getOrDefault(false)
-            }
+        return connectedAudioDevices(context).any(::isOppoPod)
     }
 
     /**
@@ -276,16 +278,28 @@ object HeadsetStateDispatcher : HookContext() {
     }
 
     @SuppressLint("MissingPermission")
+    private fun connectedAudioDevices(context: Context): List<BluetoothDevice> {
+        val bluetoothManager = context.getSystemService(BluetoothManager::class.java) ?: return emptyList()
+        // BluetoothManager.getConnectedDevices 在部分系统只接受 GATT/GATT_SERVER。
+        // 当前就在蓝牙进程内，优先从实际 ProfileService 查询，避免吞掉 unsupported profile 后永远空列表。
+        val internalDevices = listOf(
+            "com.android.bluetooth.a2dp.A2dpService" to "getA2dpService",
+            "com.android.bluetooth.hfp.HeadsetService" to "getHeadsetService",
+            "com.android.bluetooth.le_audio.LeAudioService" to "getLeAudioService",
+        ).flatMap { (type, getter) ->
+            runCatching {
+                val service = findMethod(type, getter).invoke(null)
+                (callMethod(service, "getConnectedDevices") as? List<*>)?.filterIsInstance<BluetoothDevice>().orEmpty()
+            }.getOrDefault(emptyList())
+        }
+        val managerDevices = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
+            .flatMap { profile -> runCatching { bluetoothManager.getConnectedDevices(profile) }.getOrDefault(emptyList()) }
+        return (internalDevices + managerDevices).distinctBy { it.address }
+    }
+
+    @SuppressLint("MissingPermission")
     private fun bootstrapConnectedDevice(context: Context) {
-        val bluetoothManager = context.getSystemService(BluetoothManager::class.java) ?: return
-        val device = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
-            .asSequence()
-            .flatMap { profile ->
-                runCatching { bluetoothManager.getConnectedDevices(profile).asSequence() }
-                    .getOrElse { emptySequence() }
-            }
-            .distinctBy { it.address }
-            .firstOrNull(::isOppoPod)
+        val device = connectedAudioDevices(context).firstOrNull(::isOppoPod)
             ?: run {
                 Log.d(TAG, "connected-device bootstrap found no OPPO earbuds")
                 return
